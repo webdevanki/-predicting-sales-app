@@ -1,0 +1,14 @@
+# Dane i wyniki
+*.csv
+*.xlsx
+*.pkl
+logs.log
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Pliki systemowe i środowiskowe
+.env
+__pycache__/
+*.pyc
+.DS_Store
