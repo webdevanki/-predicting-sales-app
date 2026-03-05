@@ -5,6 +5,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 import os
+import shap
+
+
+def engineer_features(df_raw):
+    """Odtwarza feature engineering z notebooka – musi być identyczny."""
+    df_fe = df_raw.copy()
+    drop_cols = ['ID', 'Komentarz']
+    df_fe.drop(columns=[c for c in drop_cols if c in df_fe.columns], inplace=True)
+
+    date_cols = [c for c in df_fe.columns if 'data' in c.lower() or 'date' in c.lower()]
+    for col in date_cols:
+        try:
+            df_fe[col] = pd.to_datetime(df_fe[col])
+            df_fe[f'{col}_miesiac'] = df_fe[col].dt.month
+            df_fe[f'{col}_dzien_tygodnia'] = df_fe[col].dt.dayofweek
+            df_fe[f'{col}_kwartal'] = df_fe[col].dt.quarter
+            df_fe.drop(columns=[col], inplace=True)
+        except Exception:
+            pass
+
+    return df_fe
 
 st.set_page_config(page_title="Predykcja płatności klientów", layout="wide")
 st.title("Predykcja płatności klientów")
@@ -47,8 +68,8 @@ if mode == "Wgraj surowe dane i przewiduj na żywo" and model_loaded:
     except Exception:
         pass
 
-    drop_cols = [c for c in ['ID', 'Komentarz'] if c in df.columns]
-    X = df.drop(columns=drop_cols + (['Zapłacono'] if 'Zapłacono' in df.columns else []))
+    df_fe = engineer_features(df)
+    X = df_fe.drop(columns=[c for c in ['Zapłacono'] if c in df_fe.columns])
 
     with st.spinner("Uruchamiam model..."):
         scores = pipeline.predict(X)
@@ -58,6 +79,10 @@ if mode == "Wgraj surowe dane i przewiduj na żywo" and model_loaded:
     df['prediction_label'] = (scores > threshold).astype(int)
 
     st.caption(f"Próg klasyfikacji (mediana predykcji): **{threshold:.2f} PLN**")
+
+    # Zachowaj X i pipeline do sekcji SHAP
+    st.session_state['X'] = X
+    st.session_state['pipeline'] = pipeline
 
 # --- Walidacja kolumn ---
 if 'prediction_label' not in df.columns:
@@ -117,3 +142,61 @@ if 'Zapłacono' in df.columns:
     display_cols = [c for c in ['Nazwa klienta', 'Zapłacono', 'prediction_score', 'Sprzedawca'] if c in df.columns]
     df_unpaid = df[df['prediction_label'] == 0].sort_values('Zapłacono', ascending=False).head(20)
     st.dataframe(df_unpaid[display_cols], use_container_width=True)
+
+# --- SHAP – interpretacja modelu ---
+# Działa jeśli model_pipeline.pkl istnieje – niezależnie od trybu
+_shap_pipeline = st.session_state.get('pipeline') or (joblib.load(MODEL_PATH) if model_loaded else None)
+_shap_X = st.session_state.get('X')
+
+# W trybie CSV odtwórz X z wgranego df jeśli pipeline jest dostępny
+if _shap_pipeline is not None and _shap_X is None:
+    try:
+        df_fe = engineer_features(df)
+        drop_target = [c for c in ['Zapłacono', 'prediction_score', 'prediction_label'] if c in df_fe.columns]
+        _shap_X = df_fe.drop(columns=drop_target, errors='ignore')
+    except Exception:
+        _shap_X = None
+
+if _shap_pipeline is not None and _shap_X is not None:
+    st.divider()
+    st.subheader("Interpretacja modelu – SHAP")
+    st.caption("SHAP pokazuje które cechy i jak wpływają na każdą predykcję. Czerwony = wysoka wartość cechy, niebieski = niska.")
+
+    try:
+        with st.spinner("Obliczam SHAP values..."):
+            _preprocessor = _shap_pipeline.named_steps['preprocessor']
+            _model = _shap_pipeline.named_steps['model']
+            _X_transformed = _preprocessor.transform(_shap_X)
+
+            num_cols_shap = list(_preprocessor.transformers_[0][2])
+            try:
+                cat_cols_shap = _preprocessor.transformers_[1][2]
+                cat_feature_names = _preprocessor.named_transformers_['cat'] \
+                    .named_steps['encoder'].get_feature_names_out(cat_cols_shap).tolist()
+            except Exception:
+                cat_feature_names = []
+
+            feature_names = num_cols_shap + cat_feature_names
+            explainer = shap.TreeExplainer(_model)
+            shap_values = explainer(_X_transformed)
+            shap_values.feature_names = feature_names
+
+        col_shap1, col_shap2 = st.columns(2)
+
+        with col_shap1:
+            st.markdown("**Globalny wpływ cech (Beeswarm)**")
+            plt.figure()
+            shap.plots.beeswarm(shap_values, max_display=10, show=False)
+            st.pyplot(plt.gcf())
+            plt.close()
+
+        with col_shap2:
+            st.markdown("**Wyjaśnienie pojedynczej predykcji (Waterfall)**")
+            sample_idx = st.slider("Wybierz rekord", 0, len(_shap_X) - 1, 0)
+            plt.figure()
+            shap.plots.waterfall(shap_values[sample_idx], max_display=10, show=False)
+            st.pyplot(plt.gcf())
+            plt.close()
+
+    except Exception as e:
+        st.warning(f"Nie udało się wygenerować SHAP: {e}")
