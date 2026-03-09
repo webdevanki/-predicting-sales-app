@@ -6,4 +6,5 @@ seaborn
 streamlit
 joblib
 shap
+mlflow
 jupyter

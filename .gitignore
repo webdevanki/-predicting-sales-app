@@ -1,14 +1,36 @@
-# Dane i wyniki
-*.csv
-*.xlsx
-*.pkl
-logs.log
+# Dane wejściowe i wyjściowe (nie wersjonujemy danych produkcyjnych)
+predykcje.csv
+predykcje2.csv
+
+# Artefakty modelu generowane przez notebook
+model_pipeline.pkl
+model_zaplaty.pkl
+
+# Wykresy generowane przez notebook
+residuals_plot.png
+feature_importance.png
+shap_beeswarm.png
+correlation.png
+ab_test.png
+
+# MLflow – katalog z historią runów i baza danych (może być duży)
+mlruns/
+mlartifacts/
+mlflow.db
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# Pliki systemowe i środowiskowe
-.env
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# Środowisko
+.env
+venv/
+.venv/
+
+# Systemowe
 .DS_Store
+Thumbs.db
