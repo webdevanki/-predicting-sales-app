@@ -13,238 +13,293 @@ from sklearn.impute import SimpleImputer
 from sklearn.ensemble import GradientBoostingRegressor
 
 RANDOM_STATE = 42
+TODAY = pd.Timestamp("2026-06-25")  # używamy stałej żeby demo było przewidywalne
 
-
-# ---------------------------------------------------------------------------
-# Dane i model
-# ---------------------------------------------------------------------------
+# ───────────────────────────────────────────────────────── Dane demo ──────────
 
 def generate_demo_data():
     np.random.seed(42)
     n = 500
 
     klienci = [
-        'Kowalski Sp. z o.o.', 'Nowak Trading', 'TechVision S.A.', 'BudMat Polska',
-        'AgriPol Sp. z o.o.', 'LogiTrans', 'MedSupply', 'RetailPro S.A.',
-        'GreenEnergy Sp. z o.o.', 'AutoParts Polska', 'FoodDist S.A.', 'PrintMaster',
-        'ChemTech Sp. z o.o.', 'SteelWork S.A.', 'EduTech Sp. z o.o.',
-        'ProBuild S.A.', 'DataSoft Sp. z o.o.', 'FastLog Polska', 'MediCare S.A.',
-        'AgroPlus Sp. z o.o.', 'ElektroTech S.A.', 'ColdChain Polska', 'NetServ Sp. z o.o.',
-        'HeavyDuty S.A.', 'FreshFood Polska', 'SmartRetail Sp. z o.o.', 'GreenPower S.A.',
-        'CargoXpress', 'PharmaDist Sp. z o.o.', 'TurboChem S.A.',
-        'DigitalHub Sp. z o.o.', 'IronWorks S.A.', 'AquaTech Polska', 'SkyBuild Sp. z o.o.',
-        'OmniRetail S.A.', 'BioFarm Polska', 'SafeGuard Sp. z o.o.', 'MaxiLog S.A.',
-        'NovaMed Sp. z o.o.', 'PrimeTech S.A.'
+        "Kowalski Sp. z o.o.", "Nowak Trading", "TechVision S.A.", "BudMat Polska",
+        "AgriPol Sp. z o.o.", "LogiTrans", "MedSupply", "RetailPro S.A.",
+        "GreenEnergy Sp. z o.o.", "AutoParts Polska", "FoodDist S.A.", "PrintMaster",
+        "ChemTech Sp. z o.o.", "SteelWork S.A.", "EduTech Sp. z o.o.",
+        "ProBuild S.A.", "DataSoft Sp. z o.o.", "FastLog Polska", "MediCare S.A.",
+        "AgroPlus Sp. z o.o.", "ElektroTech S.A.", "ColdChain Polska",
+        "NetServ Sp. z o.o.", "HeavyDuty S.A.", "FreshFood Polska",
+        "SmartRetail Sp. z o.o.", "GreenPower S.A.", "CargoXpress",
+        "PharmaDist Sp. z o.o.", "TurboChem S.A.", "DigitalHub Sp. z o.o.",
+        "IronWorks S.A.", "AquaTech Polska", "SkyBuild Sp. z o.o.",
+        "OmniRetail S.A.", "BioFarm Polska", "SafeGuard Sp. z o.o.",
+        "MaxiLog S.A.", "NovaMed Sp. z o.o.", "PrimeTech S.A.",
     ]
     sprzedawcy = [
-        'Anna Wiśniewska', 'Piotr Kowalczyk', 'Marta Jabłońska',
-        'Tomasz Nowak', 'Katarzyna Wróbel', 'Michał Zając', 'Joanna Kowalska'
+        "Anna Wiśniewska", "Piotr Kowalczyk", "Marta Jabłońska",
+        "Tomasz Nowak", "Katarzyna Wróbel", "Michał Zając", "Joanna Kowalska",
     ]
     branże = [
-        'IT / Technologia', 'Budownictwo', 'Rolnictwo', 'Logistyka', 'Medycyna',
-        'Retail', 'Energia', 'Motoryzacja', 'Spożywczy', 'Edukacja'
+        "IT / Technologia", "Budownictwo", "Rolnictwo", "Logistyka", "Medycyna",
+        "Retail", "Energia", "Motoryzacja", "Spożywczy", "Edukacja",
     ]
     branza_mult = {
-        'IT / Technologia': 1.3, 'Medycyna': 1.4, 'Energia': 1.2,
-        'Budownictwo': 1.1, 'Rolnictwo': 0.9, 'Logistyka': 1.0,
-        'Retail': 0.95, 'Motoryzacja': 1.15, 'Spożywczy': 0.85, 'Edukacja': 0.8
+        "IT / Technologia": 1.3, "Medycyna": 1.4, "Energia": 1.2,
+        "Budownictwo": 1.1, "Rolnictwo": 0.9, "Logistyka": 1.0,
+        "Retail": 0.95, "Motoryzacja": 1.15, "Spożywczy": 0.85, "Edukacja": 0.8,
     }
 
-    daty = pd.date_range('2022-01-01', '2024-06-30', periods=n)
-    liczba_produktow = np.random.randint(1, 80, n)
-    cena_jednostkowa = np.random.uniform(20, 800, n)
-    branza_arr = np.random.choice(branże, n)
-    mult = np.array([branza_mult[b] for b in branza_arr])
-    zaplac = (liczba_produktow * cena_jednostkowa * mult + np.random.normal(0, 500, n)).clip(50).round(2)
+    # Realistyczny rozkład dat — część historyczna, część bieżąca, część przyszła
+    dates_hist   = pd.date_range("2023-01-01", "2025-12-31", periods=300)
+    dates_active = pd.date_range("2026-01-01", "2026-05-25", periods=100)
+    dates_now    = pd.date_range("2026-05-26", "2026-06-20", periods=60)
+    dates_future = pd.date_range("2026-06-26", "2026-08-31", periods=40)
+    all_dates    = np.concatenate([dates_hist.values, dates_active.values,
+                                   dates_now.values, dates_future.values])
+    idx  = np.random.permutation(n)
+    daty = pd.DatetimeIndex(all_dates[idx])
+
+    liczba_produktow  = np.random.randint(1, 80, n)
+    cena_jednostkowa  = np.random.uniform(20, 800, n)
+    branza_arr        = np.random.choice(branże, n)
+    mult              = np.array([branza_mult[b] for b in branza_arr])
+    zaplacono         = (liczba_produktow * cena_jednostkowa * mult
+                         + np.random.normal(0, 500, n)).clip(50).round(2)
 
     return pd.DataFrame({
-        'ID': range(1001, 1001 + n),
-        'Data zamowienia': daty.strftime('%Y-%m-%d'),
-        'Nazwa klienta': np.random.choice(klienci, n),
-        'Sprzedawca': np.random.choice(sprzedawcy, n),
-        'Branża': branza_arr,
-        'Liczba produktow': liczba_produktow,
-        'Wartosc jednostkowa': cena_jednostkowa.round(2),
-        'Zapłacono': zaplac,
-        'Komentarz': np.random.choice(['', 'Pilne', 'Klient VIP', 'Reklamacja', ''], n)
+        "ID":                 range(1001, 1001 + n),
+        "Data zamowienia":    daty.strftime("%Y-%m-%d"),
+        "Nazwa klienta":      np.random.choice(klienci, n),
+        "Sprzedawca":         np.random.choice(sprzedawcy, n),
+        "Branża":             branza_arr,
+        "Liczba produktow":   liczba_produktow,
+        "Wartosc jednostkowa": cena_jednostkowa.round(2),
+        "Zapłacono":          zaplacono,
+        "Komentarz":          np.random.choice(["", "Pilne", "Klient VIP", "Reklamacja", ""], n),
     })
 
 
 def engineer_features(df_raw):
-    df_fe = df_raw.copy()
-    df_fe.drop(columns=[c for c in ['ID', 'Komentarz'] if c in df_fe.columns], inplace=True)
-    date_cols = [c for c in df_fe.columns if 'data' in c.lower() or 'date' in c.lower()]
-    for col in date_cols:
+    df = df_raw.copy()
+    df.drop(columns=[c for c in ["ID", "Komentarz"] if c in df.columns], inplace=True)
+    for col in [c for c in df.columns if "data" in c.lower() or "date" in c.lower()]:
         try:
-            df_fe[col] = pd.to_datetime(df_fe[col])
-            df_fe[f'{col}_miesiac'] = df_fe[col].dt.month
-            df_fe[f'{col}_dzien_tygodnia'] = df_fe[col].dt.dayofweek
-            df_fe[f'{col}_kwartal'] = df_fe[col].dt.quarter
-            df_fe.drop(columns=[col], inplace=True)
+            df[col] = pd.to_datetime(df[col])
+            df[f"{col}_miesiac"]       = df[col].dt.month
+            df[f"{col}_dzien_tygodnia"] = df[col].dt.dayofweek
+            df[f"{col}_kwartal"]       = df[col].dt.quarter
+            df.drop(columns=[col], inplace=True)
         except Exception:
             pass
-    return df_fe
+    return df
 
 
 @st.cache_resource
 def train_model(df_hash, _df):
     df_fe = engineer_features(_df)
-    X = df_fe.drop(columns=['Zapłacono'])
-    y = df_fe['Zapłacono']
-
-    num_cols = X.select_dtypes(include='number').columns.tolist()
-    cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    preprocessor = ColumnTransformer([
-        ('num', Pipeline([
-            ('imputer', SimpleImputer(strategy='median')),
-            ('scaler', StandardScaler())
+    X     = df_fe.drop(columns=["Zapłacono"])
+    y     = df_fe["Zapłacono"]
+    num_cols = X.select_dtypes(include="number").columns.tolist()
+    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+    pre = ColumnTransformer([
+        ("num", Pipeline([
+            ("imp", SimpleImputer(strategy="median")),
+            ("sc",  StandardScaler()),
         ]), num_cols),
-        ('cat', Pipeline([
-            ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-        ]), cat_cols)
+        ("cat", Pipeline([
+            ("imp", SimpleImputer(strategy="constant", fill_value="missing")),
+            ("enc", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]), cat_cols),
     ])
-
-    pipeline = Pipeline([
-        ('pre', preprocessor),
-        ('model', GradientBoostingRegressor(n_estimators=100, random_state=RANDOM_STATE))
-    ])
-    pipeline.fit(X, y)
-    return pipeline, X, num_cols, cat_cols
+    pipe = Pipeline([("pre", pre), ("model", GradientBoostingRegressor(
+        n_estimators=100, random_state=RANDOM_STATE))])
+    pipe.fit(X, y)
+    return pipe, X, num_cols, cat_cols
 
 
-# ---------------------------------------------------------------------------
-# Konfiguracja strony
-# ---------------------------------------------------------------------------
+# ────────────────────────────────────────────────────── Helpers / UI ──────────
 
-st.set_page_config(
-    page_title="Predykcja płatności B2B",
-    layout="wide",
-    page_icon="💳"
+_chart_base = dict(
+    plot_bgcolor="#FFFFFF",
+    paper_bgcolor="#F4F6F9",
+    font=dict(family="Segoe UI", color="#1B2A4A"),
 )
+_ax = dict(gridcolor="#F0F2F5", linecolor="#E0E4EA")
+
+
+def priority_tier(score):
+    if score >= 70:
+        return "🔴", "Krytyczne", "#C50F1F", "#FFF0F0"
+    if score >= 45:
+        return "🟠", "Pilne",     "#E8792A", "#FFF5EE"
+    return       "🟡", "Ważne",    "#D4A017", "#FFFDE8"
+
+
+def get_contact_reason(row, client_counts, branza_stats, has_branza):
+    reasons = []
+    days    = row.get("dni_do_terminu", 999)
+
+    if days < -14:
+        reasons.append(f"przeterminowane {abs(int(days))} dni")
+    elif days < 0:
+        reasons.append(f"termin minął {abs(int(days))} dni temu")
+    elif days <= 3:
+        reasons.append(f"termin płatności za {int(days)} {'dzień' if int(days)==1 else 'dni'}")
+    elif days <= 7:
+        reasons.append(f"termin za {int(days)} dni")
+
+    count = int(client_counts.get(row.get("Nazwa klienta", ""), 0))
+    if count > 3:
+        reasons.append(f"powtarzający się klient ryzyka ({count}×)")
+    elif count > 1:
+        reasons.append(f"{count} zamówień poniżej progu")
+
+    if has_branza and branza_stats is not None:
+        b    = row.get("Branża", "")
+        rpct = branza_stats["risk_pct"].get(b, 0)
+        if rpct > 65:
+            reasons.append(f"branża wysokiego ryzyka ({rpct:.0f}%)")
+
+    return " · ".join(reasons[:2]) if reasons else "wysoka wartość zagrożonej płatności"
+
+
+def action_card(rank, icon, label, color, bg,
+                client, industry, salesperson, value, days, reason):
+    if days < 0:
+        days_txt   = f"Przeterminowane ({abs(int(days))} dni)"
+        days_color = "#C50F1F"
+    elif days == 0:
+        days_txt   = "Termin: dziś"
+        days_color = "#C50F1F"
+    elif days <= 7:
+        days_txt   = f"Termin: za {int(days)} dni"
+        days_color = "#E8792A"
+    elif days <= 14:
+        days_txt   = f"Termin: za {int(days)} dni"
+        days_color = "#D4A017"
+    else:
+        days_txt   = f"Termin: za {int(days)} dni"
+        days_color = "#6B7A99"
+
+    return f"""
+<div style='display:flex; align-items:stretch; background:#FFFFFF;
+            border:1px solid #E8ECF0; border-radius:6px; margin-bottom:8px;
+            box-shadow:0 1px 4px rgba(0,0,0,0.05); overflow:hidden;'>
+  <div style='background:{bg}; border-right:3px solid {color}; min-width:72px;
+              padding:14px 8px; display:flex; flex-direction:column;
+              align-items:center; justify-content:center;'>
+    <div style='font-size:1.15rem; line-height:1;'>{icon}</div>
+    <div style='color:{color}; font-size:0.58rem; font-weight:800;
+                text-transform:uppercase; letter-spacing:0.08em;
+                text-align:center; margin-top:4px; line-height:1.3;'>{label}</div>
+    <div style='color:#AABACE; font-size:0.72rem; margin-top:5px;'>#{rank}</div>
+  </div>
+  <div style='flex:1; padding:12px 16px; display:flex;
+              justify-content:space-between; align-items:center; gap:12px;'>
+    <div style='flex:1; min-width:0;'>
+      <div style='font-weight:700; color:#1B2A4A; font-size:0.95rem; margin-bottom:3px;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>{client}</div>
+      <div style='color:#6B7A99; font-size:0.78rem; margin-bottom:5px;'>
+        {industry} &nbsp;·&nbsp; Opiekun: <strong style='color:#1B2A4A;'>{salesperson}</strong>
+      </div>
+      <div style='color:#8896A8; font-size:0.76rem;'>⚠&thinsp; {reason}</div>
+    </div>
+    <div style='text-align:right; flex-shrink:0; min-width:110px;'>
+      <div style='color:#C50F1F; font-size:1.2rem; font-weight:700; line-height:1; margin-bottom:4px;'>
+        {value:,.0f}&thinsp;PLN
+      </div>
+      <div style='color:{days_color}; font-size:0.74rem; font-weight:600;'>{days_txt}</div>
+    </div>
+  </div>
+</div>"""
+
+
+def kpi_card(color, label, value, sub):
+    return f"""
+<div style='background:#FFFFFF; border:1px solid #E8ECF0; border-top:3px solid {color};
+            border-radius:6px; padding:18px 20px;
+            box-shadow:0 1px 4px rgba(0,0,0,0.06);'>
+  <div style='color:#8896A8; font-size:0.7rem; font-weight:700;
+              text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px;'>
+    {label}
+  </div>
+  <div style='color:{color}; font-size:2rem; font-weight:700; line-height:1; margin-bottom:5px;'>
+    {value}
+  </div>
+  <div style='color:#8896A8; font-size:0.78rem;'>{sub}</div>
+</div>"""
+
+
+def section_header(text):
+    st.markdown(
+        f"<div style='font-size:1.05rem; font-weight:700; color:#1B2A4A; "
+        f"border-left:3px solid #0065BD; padding-left:10px; margin:20px 0 12px;'>"
+        f"{text}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ──────────────────────────────────────────────────── Konfiguracja strony ──────
+
+st.set_page_config(page_title="B2B Payment Risk", layout="wide", page_icon="💳")
 
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F4F6F9;
-    font-family: 'Segoe UI', system-ui, sans-serif;
+.stApp { background:#F4F6F9; font-family:'Segoe UI',system-ui,sans-serif; }
+.main .block-container { padding:1.5rem 3rem; max-width:1200px; }
+[data-testid="stSidebar"] { background:#FFFFFF; border-right:1px solid #E0E4EA; }
+h1 { color:#1B2A4A !important; font-size:1.7rem !important; font-weight:700 !important;
+     border-bottom:3px solid #0065BD; padding-bottom:8px; }
+h2,h3 { color:#1B2A4A !important; font-weight:600 !important; }
+hr    { border-color:#E0E4EA; margin:1.2rem 0; }
+.stTabs [data-baseweb="tab-list"] {
+  background:#FFFFFF; border-radius:6px; padding:4px;
+  border:1px solid #E0E4EA; gap:2px;
 }
-
-.main .block-container {
-    padding: 2rem 3rem;
-    max-width: 1200px;
+.stTabs [data-baseweb="tab"] {
+  border-radius:4px; padding:8px 18px;
+  color:#6B7A99; font-weight:600; font-size:0.88rem;
 }
-
-[data-testid="stSidebar"] {
-    background: #FFFFFF;
-    border-right: 1px solid #E0E4EA;
+.stTabs [aria-selected="true"] {
+  background:#0065BD !important; color:#FFFFFF !important;
 }
-
-[data-testid="metric-container"] {
-    background: #FFFFFF;
-    border: 1px solid #E0E4EA;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-
-h1 {
-    color: #1B2A4A !important;
-    font-size: 1.8rem !important;
-    font-weight: 700 !important;
-    border-bottom: 3px solid #0065BD;
-    padding-bottom: 8px;
-}
-
-h2, h3 {
-    color: #1B2A4A !important;
-    font-weight: 600 !important;
-}
-
-hr { border-color: #E0E4EA; margin: 1.5rem 0; }
-
-[data-testid="stDataFrame"] {
-    border-radius: 8px;
-    border: 1px solid #E0E4EA;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-[data-testid="stAlert"] {
-    border-radius: 6px;
-    border-left: 4px solid #0065BD;
-}
-
 [data-testid="stExpander"] {
-    background: #FFFFFF;
-    border: 1px solid #E0E4EA;
-    border-radius: 8px;
+  background:#FFFFFF; border:1px solid #E0E4EA; border-radius:8px;
 }
-
-[data-testid="stRadio"] label { color: #1B2A4A !important; }
-
-.stSlider > div > div > div { background: #0065BD !important; }
-
-.stCaption { color: #6B7A99 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
+# ────────────────────────────────────────────────────────────── Sidebar ──────
 
 with st.sidebar:
     st.markdown("""
-<div style='padding:16px 0 20px; border-bottom:1px solid #E0E4EA;
-            margin-bottom:16px;'>
-    <div style='font-size:1.1rem; font-weight:700; color:#0065BD;'>
-        💳 B2B Payment Risk
-    </div>
-    <div style='font-size:0.7rem; color:#6B7A99;
-                letter-spacing:0.1em; margin-top:2px;'>
-        PREDICTION DASHBOARD
-    </div>
-</div>
-""", unsafe_allow_html=True)
+<div style='padding:14px 0 18px; border-bottom:2px solid #0065BD; margin-bottom:18px;'>
+  <div style='font-size:1.1rem; font-weight:700; color:#0065BD;'>💳 B2B Payment Risk</div>
+  <div style='font-size:0.66rem; color:#8896A8; text-transform:uppercase;
+              letter-spacing:0.12em; margin-top:3px;'>Prediction Dashboard</div>
+</div>""", unsafe_allow_html=True)
 
-    st.title("Ustawienia")
-
-    mode = st.radio("Źródło danych:", ["Dane demo", "Wgraj własny CSV"])
-
+    st.markdown("**Źródło danych**")
+    mode = st.radio("", ["Dane demo", "Wgraj własny CSV"], label_visibility="collapsed")
     st.divider()
 
-    threshold = st.slider(
-        "Próg ryzyka (PLN)",
-        min_value=1_000,
-        max_value=50_000,
-        value=8_000,
-        step=500,
-        format="%d PLN"
-    )
+    st.markdown("**Próg ryzyka**")
     st.caption(
-        f"Zamówienia z predykcją **poniżej {threshold:,} PLN** "
-        "są klasyfikowane jako **wysokie ryzyko**."
+        "Zamówienia, których **predykcja płatności** spada poniżej progu, "
+        "uznajemy za ryzykowne — klient prawdopodobnie zapłaci mniej lub z opóźnieniem."
+    )
+    threshold = st.slider(
+        "", min_value=1_000, max_value=50_000, value=8_000, step=500,
+        format="%d PLN", label_visibility="collapsed",
     )
 
-    st.divider()
-    st.markdown("**Stack techniczny**")
-    st.markdown(
-        "- scikit-learn · GradientBoosting\n"
-        "- SHAP · TreeExplainer\n"
-        "- Plotly · Streamlit\n"
-        "- pandas · numpy"
-    )
-    st.markdown("[GitHub →](https://github.com/webdevanki/-predicting-sales-app)")
-
-# ---------------------------------------------------------------------------
-# Wczytanie danych
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────── Wczytaj dane ──────
 
 if mode == "Dane demo":
     df_raw = generate_demo_data()
     st.info(
-        "Tryb demo — 500 syntetycznych zamówień B2B (40 klientów, 7 sprzedawców). "
-        "Zmień źródło danych w sidebarze, żeby wgrać własny CSV."
+        "Tryb demo — 500 syntetycznych zamówień B2B · 40 klientów · 7 sprzedawców · "
+        "daty: historyczne, bieżące i przyszłe."
     )
 else:
     uploaded = st.file_uploader("Wgraj plik CSV z zamówieniami", type=["csv"])
@@ -253,482 +308,535 @@ else:
         st.stop()
     df_raw = pd.read_csv(uploaded)
 
-# ---------------------------------------------------------------------------
-# Tytuł i opis
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────── Trenuj model ──────
 
-st.title("Predykcja płatności klientów B2B")
-st.markdown(
-    "Model **Gradient Boosting** przewiduje wartość płatności dla każdego zamówienia "
-    "i klasyfikuje je jako **niskie** lub **wysokie ryzyko** względem ustawionego progu. "
-    "Dział sprzedaży może dzięki temu priorytetyzować klientów wymagających interwencji "
-    "przed terminem płatności. Próg ryzyka dostosuj w sidebarze."
-)
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Trening i predykcje
-# ---------------------------------------------------------------------------
-
-with st.spinner("Trenuję model..."):
+with st.spinner("Trenuję model predykcyjny…"):
     df_hash = int(pd.util.hash_pandas_object(df_raw, index=True).sum())
     pipeline, X_all, num_cols, cat_cols = train_model(df_hash, df_raw)
 
-scores = pipeline.predict(X_all)
-df_out = df_raw.copy()
-df_out['prediction_score'] = scores.round(2)
-df_out['prediction_label'] = (scores >= threshold).astype(int)  # 1=niskie, 0=wysokie ryzyko
+scores    = pipeline.predict(X_all)
+df_out    = df_raw.copy()
+df_out["prediction_score"] = scores.round(2)
+df_out["prediction_label"] = (scores >= threshold).astype(int)
 
-has_branza = 'Branża' in df_out.columns
-has_sprzedawca = 'Sprzedawca' in df_out.columns
+has_branza    = "Branża" in df_out.columns
+has_sprzedawca = "Sprzedawca" in df_out.columns
+has_dates     = "Data zamowienia" in df_out.columns
 
+# Statystyki branżowe
 if has_branza:
-    branza_stats = df_out.groupby('Branża').agg(
-        total=('prediction_label', 'count'),
-        high_risk=('prediction_label', lambda x: (x == 0).sum())
+    branza_stats = df_out.groupby("Branża").agg(
+        total=("prediction_label", "count"),
+        high_risk=("prediction_label", lambda x: (x == 0).sum()),
     )
-    branza_stats['risk_pct'] = branza_stats['high_risk'] / branza_stats['total'] * 100
-    worst_branza = branza_stats['risk_pct'].idxmax()
-    best_branza = branza_stats['risk_pct'].idxmin()
+    branza_stats["risk_pct"] = branza_stats["high_risk"] / branza_stats["total"] * 100
+    worst_branza = branza_stats["risk_pct"].idxmax()
+    best_branza  = branza_stats["risk_pct"].idxmin()
+else:
+    branza_stats = None
 
+# Statystyki sprzedawców
 if has_sprzedawca:
-    sprzedawca_stats = df_out.groupby('Sprzedawca').agg(
-        total=('prediction_label', 'count'),
-        high_risk=('prediction_label', lambda x: (x == 0).sum())
+    sp_stats = df_out.groupby("Sprzedawca").agg(
+        total=("prediction_label", "count"),
+        high_risk=("prediction_label", lambda x: (x == 0).sum()),
     )
-    sprzedawca_stats['risk_pct'] = sprzedawca_stats['high_risk'] / sprzedawca_stats['total'] * 100
-    worst_sprzedawca = sprzedawca_stats['risk_pct'].idxmax()
+    sp_stats["risk_pct"]  = sp_stats["high_risk"] / sp_stats["total"] * 100
+    sp_stats["low_risk"]  = sp_stats["total"] - sp_stats["high_risk"]
+    worst_sprzedawca = sp_stats["risk_pct"].idxmax()
 
-# ---------------------------------------------------------------------------
-# KPI — karty Power BI style
-# ---------------------------------------------------------------------------
+# Globalne KPI
+total        = len(df_out)
+n_high       = int((df_out["prediction_label"] == 0).sum())
+n_low        = int((df_out["prediction_label"] == 1).sum())
+value_at_risk = float(df_out.loc[df_out["prediction_label"] == 0, "prediction_score"].sum())
+median_order = float(df_out["prediction_score"].median())
 
-total = len(df_out)
-n_high = int((df_out['prediction_label'] == 0).sum())
-n_low = int((df_out['prediction_label'] == 1).sum())
-value_at_risk = float(df_out.loc[df_out['prediction_label'] == 0, 'prediction_score'].sum())
+# ─────────────────────────────── Sidebar: feedback progu ──────────
+
+with st.sidebar:
+    st.markdown(
+        f"""
+<div style='background:#F4F6F9; border:1px solid #E0E4EA; border-radius:6px;
+            padding:10px 12px; margin-top:4px; font-size:0.8rem; line-height:1.9;'>
+  <div><span style='color:#C50F1F; font-weight:700;'>● {n_high}</span>
+  &nbsp;zamówień wysokiego ryzyka
+  <span style='color:#8896A8;'>({n_high/total*100:.0f}%)</span></div>
+  <div><span style='color:#E8792A; font-weight:700;'>
+    {value_at_risk:,.0f} PLN</span>&nbsp;zagrożone</div>
+  <div style='color:#8896A8; margin-top:2px; font-size:0.74rem;'>
+    Mediana portfela: <strong>{median_order:,.0f} PLN</strong></div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+    st.divider()
+    st.markdown(
+        "<div style='font-size:0.76rem; color:#8896A8; line-height:1.9;'>"
+        "scikit-learn · GradientBoosting<br>SHAP · Plotly · Streamlit</div>",
+        unsafe_allow_html=True,
+    )
+
+# ──────────────────────────────────────────────────────── Tytuł ──────
+
+st.title("Predykcja płatności klientów B2B")
+st.markdown(
+    "Model **Gradient Boosting** szacuje wartość płatności per zamówienie. "
+    "Zamówienia poniżej ustawionego progu PLN są flagowane jako **wysokie ryzyko** "
+    "— do priorytetowego kontaktu przez dział sprzedaży."
+)
+
+# ──────────────────────────────────────────────────────── KPI ──────
 
 k1, k2, k3, k4 = st.columns(4)
+k1.markdown(kpi_card("#0065BD", "Wszystkie zamówienia",   str(total),              f"po wyczyszczeniu danych"), unsafe_allow_html=True)
+k2.markdown(kpi_card("#107C10", "Niskie ryzyko",          f"{n_low/total*100:.1f}%",  f"{n_low} zamówień ≥ {threshold:,} PLN"), unsafe_allow_html=True)
+k3.markdown(kpi_card("#C50F1F", "Wysokie ryzyko",         f"{n_high/total*100:.1f}%", f"{n_high} zamówień < {threshold:,} PLN"), unsafe_allow_html=True)
+k4.markdown(kpi_card("#E8792A", "Wartość zagrożona",      f"{value_at_risk/1000:.0f}k",  "PLN łącznie"), unsafe_allow_html=True)
 
-k1.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-top:4px solid #0065BD;border-radius:8px;
-            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
-    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
-                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
-        Łączna liczba zamówień
-    </div>
-    <div style='color:#0065BD;font-size:2.2rem;font-weight:700;line-height:1;'>
-        {total}
-    </div>
-    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
-        wszystkie rekordy
-    </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
 
-k2.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-top:4px solid #107C10;border-radius:8px;
-            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
-    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
-                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
-        Niskie ryzyko
-    </div>
-    <div style='color:#107C10;font-size:2.2rem;font-weight:700;line-height:1;'>
-        {n_low / total * 100:.1f}%
-    </div>
-    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
-        {n_low} zamówień ≥ {threshold:,} PLN
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# ────────────────────────────── Przygotuj dane wysokiego ryzyka ──────
 
-k3.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-top:4px solid #C50F1F;border-radius:8px;
-            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
-    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
-                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
-        Wysokie ryzyko
-    </div>
-    <div style='color:#C50F1F;font-size:2.2rem;font-weight:700;line-height:1;'>
-        {n_high / total * 100:.1f}%
-    </div>
-    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
-        {n_high} zamówień &lt; {threshold:,} PLN
-    </div>
-</div>
-""", unsafe_allow_html=True)
+df_hr = df_out[df_out["prediction_label"] == 0].copy()
 
-k4.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-top:4px solid #E8792A;border-radius:8px;
-            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
-    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
-                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
-        Wartość zagrożona
-    </div>
-    <div style='color:#E8792A;font-size:2.2rem;font-weight:700;line-height:1;'>
-        {value_at_risk:,.0f}
-    </div>
-    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
-        PLN łącznie
-    </div>
-</div>
-""", unsafe_allow_html=True)
+if has_dates:
+    df_hr["Data zamowienia"]   = pd.to_datetime(df_hr["Data zamowienia"], errors="coerce")
+    df_hr["termin_platnosci"]  = df_hr["Data zamowienia"] + pd.Timedelta(days=30)
+    df_hr["dni_do_terminu"]    = (df_hr["termin_platnosci"] - TODAY).dt.days
+else:
+    df_hr["dni_do_terminu"] = 999
 
-st.divider()
+# Liczba zamówień ryzyka per klient
+client_counts = df_hr.groupby("Nazwa klienta").size().to_dict() if "Nazwa klienta" in df_hr.columns else {}
 
-# ---------------------------------------------------------------------------
-# Wnioski modelu — Power BI cards
-# ---------------------------------------------------------------------------
-
-st.subheader("Kluczowe wnioski")
-
-ins1, ins2, ins3 = st.columns(3)
-
-if has_branza:
-    wr = branza_stats.loc[worst_branza]
-    ins1.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-left:5px solid #C50F1F;
-            border-radius:0 8px 8px 0;padding:16px;
-            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
-    <div style='color:#C50F1F;font-size:0.72rem;font-weight:600;
-                text-transform:uppercase;letter-spacing:0.06em;'>
-        ▲ Branża najwyższego ryzyka
-    </div>
-    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
-        {worst_branza}
-    </div>
-    <div style='color:#6B7A99;font-size:0.82rem;'>
-        {wr['risk_pct']:.0f}% zamówień poniżej progu
-        ({int(wr['high_risk'])} z {int(wr['total'])})
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-    br = branza_stats.loc[best_branza]
-    ins2.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-left:5px solid #107C10;
-            border-radius:0 8px 8px 0;padding:16px;
-            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
-    <div style='color:#107C10;font-size:0.72rem;font-weight:600;
-                text-transform:uppercase;letter-spacing:0.06em;'>
-        ▼ Branża najniższego ryzyka
-    </div>
-    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
-        {best_branza}
-    </div>
-    <div style='color:#6B7A99;font-size:0.82rem;'>
-        {br['risk_pct']:.0f}% zamówień poniżej progu
-        ({int(br['high_risk'])} z {int(br['total'])})
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-if has_sprzedawca:
-    sr = sprzedawca_stats.loc[worst_sprzedawca]
-    ins3.markdown(f"""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-left:5px solid #E8792A;
-            border-radius:0 8px 8px 0;padding:16px;
-            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
-    <div style='color:#E8792A;font-size:0.72rem;font-weight:600;
-                text-transform:uppercase;letter-spacing:0.06em;'>
-        ● Sprzedawca z największym ryzykiem
-    </div>
-    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
-        {worst_sprzedawca}
-    </div>
-    <div style='color:#6B7A99;font-size:0.82rem;'>
-        {sr['risk_pct']:.0f}% zamówień wysokiego ryzyka
-        ({int(sr['high_risk'])} z {int(sr['total'])})
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Wykresy — histogram + branże (Plotly, jasny styl)
-# ---------------------------------------------------------------------------
-
-_chart_layout = dict(
-    plot_bgcolor='#FFFFFF',
-    paper_bgcolor='#F4F6F9',
-    font=dict(family='Segoe UI', color='#1B2A4A'),
-    xaxis=dict(gridcolor='#F0F2F5', linecolor='#E0E4EA'),
-    yaxis=dict(gridcolor='#F0F2F5', linecolor='#E0E4EA'),
-    margin=dict(l=20, r=20, t=40, b=20),
+# Powody kontaktu
+df_hr["reason"] = df_hr.apply(
+    lambda r: get_contact_reason(r, client_counts, branza_stats, has_branza), axis=1
 )
 
-col_left, col_right = st.columns(2)
+# Priority score
+def _urgency(days):
+    if days < 0:   return 100
+    if days <= 7:  return 80
+    if days <= 14: return 60
+    if days <= 30: return 40
+    return 20
 
-with col_left:
-    st.subheader("Rozkład przewidywanych wartości płatności")
-    score_min = float(df_out['prediction_score'].min())
-    score_max = float(df_out['prediction_score'].max())
+vmin, vmax = df_hr["prediction_score"].min(), df_hr["prediction_score"].max()
+df_hr["urgency_score"] = df_hr["dni_do_terminu"].apply(_urgency)
+df_hr["value_score"]   = (df_hr["prediction_score"] - vmin) / max(vmax - vmin, 1) * 100
+df_hr["repeat_score"]  = df_hr["Nazwa klienta"].map(client_counts).fillna(1).clip(upper=10) * 10 if "Nazwa klienta" in df_hr.columns else 10
+df_hr["priority_score"] = (
+    0.40 * df_hr["urgency_score"] +
+    0.40 * df_hr["value_score"]   +
+    0.20 * df_hr["repeat_score"]
+)
+df_hr = df_hr.sort_values("priority_score", ascending=False).reset_index(drop=True)
 
+# Buckety cash flow
+overdue     = df_hr[df_hr["dni_do_terminu"] < 0]
+this_week   = df_hr[df_hr["dni_do_terminu"].between(0, 7)]
+next_2weeks = df_hr[df_hr["dni_do_terminu"].between(8, 14)]
+this_month  = df_hr[df_hr["dni_do_terminu"].between(15, 30)]
+
+# ──────────────────────────────────────────────────────── TABY ──────
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🎯 Działania",
+    "📊 Analiza",
+    "📅 Cash flow",
+    "🔬 Model",
+])
+
+# ═══════════════════════════════════════════════════════ TAB 1 ══════
+with tab1:
+
+    # Banner z potencjałem odzysku
+    top5_val = df_hr.head(5)["prediction_score"].sum()
+    top10_val = df_hr.head(10)["prediction_score"].sum()
+    st.markdown(f"""
+<div style='background:linear-gradient(135deg,#0065BD 0%,#0052A3 100%);
+            border-radius:8px; padding:18px 24px; margin-bottom:20px; color:#FFFFFF;
+            display:flex; justify-content:space-between; align-items:center; gap:16px;'>
+  <div>
+    <div style='font-size:0.7rem; font-weight:700; text-transform:uppercase;
+                letter-spacing:0.1em; opacity:0.7; margin-bottom:4px;'>
+      Potencjał odzysku cashflow
+    </div>
+    <div style='font-size:1.4rem; font-weight:700; line-height:1.2;'>
+      Kontaktując top 5 klientów możesz zabezpieczyć
+      <span style='color:#FFD700;'>&nbsp;{top5_val:,.0f} PLN</span>
+    </div>
+    <div style='font-size:0.8rem; opacity:0.75; margin-top:4px;'>
+      Top 10 klientów → do <strong>{top10_val:,.0f} PLN</strong> &nbsp;·&nbsp;
+      {n_high} zamówień wymaga uwagi
+    </div>
+  </div>
+  <div style='text-align:right; flex-shrink:0;'>
+    <div style='font-size:2rem; font-weight:800; color:#FFD700; line-height:1;'>
+      {n_high}
+    </div>
+    <div style='font-size:0.72rem; opacity:0.7; text-transform:uppercase;'>klientów</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    # Grupuj po tierach
+    tiers = [
+        ("🔴", "Krytyczne",  "#C50F1F", "#FFF0F0", df_hr[df_hr["priority_score"] >= 70]),
+        ("🟠", "Pilne",      "#E8792A", "#FFF5EE", df_hr[(df_hr["priority_score"] >= 45) & (df_hr["priority_score"] < 70)]),
+        ("🟡", "Ważne",      "#D4A017", "#FFFDE8", df_hr[df_hr["priority_score"] < 45]),
+    ]
+
+    global_rank = 0
+    for icon, label, color, bg, subset in tiers:
+        if subset.empty:
+            continue
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:10px; "
+            f"margin:18px 0 10px;'>"
+            f"<span style='font-size:1rem;'>{icon}</span>"
+            f"<span style='font-weight:700; color:{color}; font-size:0.9rem; "
+            f"text-transform:uppercase; letter-spacing:0.06em;'>{label}</span>"
+            f"<span style='color:#8896A8; font-size:0.8rem;'>· {len(subset)} zamówień"
+            f" · {subset['prediction_score'].sum():,.0f} PLN zagrożone</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        show_n   = min(5, len(subset))
+        for _, row in subset.head(show_n).iterrows():
+            global_rank += 1
+            st.markdown(action_card(
+                rank       = global_rank,
+                icon       = icon,
+                label      = label,
+                color      = color,
+                bg         = bg,
+                client     = row.get("Nazwa klienta", "—"),
+                industry   = row.get("Branża", "—"),
+                salesperson= row.get("Sprzedawca", "—"),
+                value      = row["prediction_score"],
+                days       = int(row["dni_do_terminu"]),
+                reason     = row["reason"],
+            ), unsafe_allow_html=True)
+
+        remaining = len(subset) - show_n
+        if remaining > 0:
+            with st.expander(f"Pokaż kolejne {remaining} z kategorii '{label}'"):
+                for _, row in subset.iloc[show_n:].iterrows():
+                    global_rank += 1
+                    st.markdown(action_card(
+                        rank       = global_rank,
+                        icon       = icon,
+                        label      = label,
+                        color      = color,
+                        bg         = bg,
+                        client     = row.get("Nazwa klienta", "—"),
+                        industry   = row.get("Branża", "—"),
+                        salesperson= row.get("Sprzedawca", "—"),
+                        value      = row["prediction_score"],
+                        days       = int(row["dni_do_terminu"]),
+                        reason     = row["reason"],
+                    ), unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════ TAB 2 ══════
+with tab2:
+
+    # Kluczowe wnioski
+    section_header("Kluczowe wnioski")
+    i1, i2, i3 = st.columns(3)
+
+    def _insight(col, color, arrow, name, detail):
+        col.markdown(f"""
+<div style='background:#FFFFFF; border:1px solid #E8ECF0; border-left:4px solid {color};
+            border-radius:0 6px 6px 0; padding:16px 18px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
+  <div style='color:{color}; font-size:0.65rem; font-weight:800;
+              text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;'>{arrow}</div>
+  <div style='font-weight:700; color:#1B2A4A; font-size:1rem; line-height:1.3; margin-bottom:5px;'>
+    {name}</div>
+  <div style='color:#6B7A99; font-size:0.8rem; line-height:1.5;'>{detail}</div>
+</div>""", unsafe_allow_html=True)
+
+    if has_branza:
+        wr = branza_stats.loc[worst_branza]
+        br = branza_stats.loc[best_branza]
+        _insight(i1, "#C50F1F", "▲ Branża najwyższego ryzyka", worst_branza,
+                 f"{wr['risk_pct']:.0f}% zamówień poniżej progu "
+                 f"({int(wr['high_risk'])} z {int(wr['total'])})")
+        _insight(i2, "#107C10", "▼ Branża najniższego ryzyka", best_branza,
+                 f"{br['risk_pct']:.0f}% zamówień poniżej progu "
+                 f"({int(br['high_risk'])} z {int(br['total'])})")
+    if has_sprzedawca:
+        sr = sp_stats.loc[worst_sprzedawca]
+        _insight(i3, "#E8792A", "● Sprzedawca z największym ryzykiem", worst_sprzedawca,
+                 f"{sr['risk_pct']:.0f}% zamówień wysokiego ryzyka "
+                 f"({int(sr['high_risk'])} z {int(sr['total'])})")
+
+    st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+
+    # Wykresy
+    section_header("Rozkład wartości zamówień")
     fig = px.histogram(
-        df_out, x='prediction_score',
-        nbins=40,
-        template='plotly_white',
-        color_discrete_sequence=['#0065BD'],
-        labels={'prediction_score': 'Przewidziana wartość (PLN)', 'count': 'Liczba zamówień'}
+        df_out, x="prediction_score", nbins=40,
+        template="plotly_white",
+        color_discrete_sequence=["#0065BD"],
+        labels={"prediction_score": "Przewidziana wartość (PLN)", "count": "Liczba zamówień"},
     )
     fig.add_vrect(
-        x0=score_min, x1=threshold,
-        fillcolor='#C50F1F', opacity=0.06,
-        layer='below', line_width=0
+        x0=float(df_out["prediction_score"].min()), x1=threshold,
+        fillcolor="#C50F1F", opacity=0.06, layer="below", line_width=0,
     )
     fig.add_vline(
-        x=threshold, line_dash='dash',
-        line_color='#C50F1F', line_width=2,
-        annotation_text=f'Próg: {threshold:,} PLN',
-        annotation_font_color='#C50F1F',
-        annotation_position='top right'
+        x=threshold, line_dash="dash", line_color="#C50F1F", line_width=2,
+        annotation_text=f"Próg: {threshold:,} PLN",
+        annotation_font_color="#C50F1F", annotation_position="top right",
     )
-    fig.update_layout(**_chart_layout)
+    fig.update_layout(
+        **_chart_base,
+        xaxis=dict(title="Przewidziana wartość (PLN)", **_ax),
+        yaxis=dict(title="Liczba zamówień", **_ax),
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Czerwone tło = strefa wysokiego ryzyka (poniżej progu).")
+    st.caption("Czerwone tło = strefa wysokiego ryzyka. Każdy słupek = zakres wartości PLN.")
 
-with col_right:
-    st.subheader("Udział wysokiego ryzyka wg branży")
-    if has_branza:
-        risk_pct_sorted = branza_stats['risk_pct'].sort_values()
-        bar_colors = [
-            '#C50F1F' if v > 50 else '#E8792A' if v > 30 else '#0065BD'
-            for v in risk_pct_sorted.values
-        ]
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        section_header("Ryzyko wg branży")
+        if has_branza:
+            sorted_b = branza_stats["risk_pct"].sort_values()
+            bar_col  = [
+                "#C50F1F" if v > 50 else "#E8792A" if v > 30 else "#0065BD"
+                for v in sorted_b.values
+            ]
+            fig = go.Figure(go.Bar(
+                y=sorted_b.index.tolist(),
+                x=sorted_b.values.tolist(),
+                orientation="h",
+                marker_color=bar_col,
+                marker_line_color="rgba(0,0,0,0.06)",
+                marker_line_width=1,
+                text=[f"{v:.0f}%" for v in sorted_b.values],
+                textposition="outside",
+                textfont_color="#1B2A4A",
+            ))
+            fig.add_vline(x=50, line_dash="dot", line_color="#8896A8", line_width=1)
+            fig.update_layout(
+                **_chart_base,
+                xaxis=dict(title="% zamówień wysokiego ryzyka", range=[0, 115], **_ax),
+                yaxis=_ax,
+                showlegend=False,
+                margin=dict(l=20, r=60, t=10, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("Przerywana linia = 50%. Czerwony > 50% · Pomarańczowy > 30%")
+
+    with col_r:
+        section_header("Portfel sprzedawców")
+        if has_sprzedawca:
+            sp_sorted = sp_stats.sort_values("risk_pct", ascending=True)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                y=sp_sorted.index.tolist(), x=sp_sorted["low_risk"].tolist(),
+                name="Niskie ryzyko", orientation="h",
+                marker_color="#0065BD",
+                marker_line_color="rgba(0,0,0,0.06)", marker_line_width=1,
+            ))
+            fig.add_trace(go.Bar(
+                y=sp_sorted.index.tolist(), x=sp_sorted["high_risk"].tolist(),
+                name="Wysokie ryzyko", orientation="h",
+                marker_color="#C50F1F",
+                marker_line_color="rgba(0,0,0,0.06)", marker_line_width=1,
+                text=[f"{v:.0f}%" for v in sp_sorted["risk_pct"].values],
+                textposition="outside", textfont_color="#C50F1F",
+            ))
+            fig.update_layout(
+                barmode="stack",
+                **_chart_base,
+                xaxis=dict(title="Liczba zamówień", **_ax),
+                yaxis=_ax,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=20, r=70, t=30, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("% po prawej = udział wysokiego ryzyka w portfelu.")
+
+# ═══════════════════════════════════════════════════════ TAB 3 ══════
+with tab3:
+
+    section_header("Zagrożone płatności wg terminu")
+
+    cf_buckets = [
+        ("🚨", "Przeterminowane",    overdue,     "#C50F1F"),
+        ("⚡", "Ten tydzień (0–7d)", this_week,   "#E8792A"),
+        ("⏰", "8–14 dni",           next_2weeks, "#F59E0B"),
+        ("📅", "15–30 dni",          this_month,  "#0065BD"),
+    ]
+    c1, c2, c3, c4 = st.columns(4)
+    for col, (icon, lbl, data, clr) in zip([c1, c2, c3, c4], cf_buckets):
+        val = data["prediction_score"].sum()
+        cnt = len(data)
+        col.markdown(f"""
+<div style='background:#FFFFFF; border:1px solid #E8ECF0; border-top:3px solid {clr};
+            border-radius:6px; padding:16px; text-align:center;
+            box-shadow:0 1px 4px rgba(0,0,0,0.06);'>
+  <div style='font-size:1.5rem; margin-bottom:6px;'>{icon}</div>
+  <div style='color:#8896A8; font-size:0.67rem; font-weight:700;
+              text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;'>
+    {lbl}</div>
+  <div style='color:{clr}; font-size:1.55rem; font-weight:700; line-height:1; margin-bottom:3px;'>
+    {val/1000:.0f}k</div>
+  <div style='color:#8896A8; font-size:0.74rem;'>PLN · {cnt} zamówień</div>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
+    section_header("Trend % ryzyka w czasie")
+
+    if has_dates:
+        df_trend = df_out.copy()
+        df_trend["Data zamowienia"] = pd.to_datetime(df_trend["Data zamowienia"], errors="coerce")
+        df_trend["miesiac"] = df_trend["Data zamowienia"].dt.to_period("M")
+        monthly = (df_trend.groupby("miesiac")
+                   .agg(total=("prediction_label","count"),
+                        high_risk=("prediction_label", lambda x:(x==0).sum()))
+                   .reset_index())
+        monthly["risk_pct"]    = monthly["high_risk"] / monthly["total"] * 100
+        monthly["miesiac_str"] = monthly["miesiac"].astype(str)
+        monthly = monthly.tail(18)
+
         fig = go.Figure()
-        fig.add_trace(go.Bar(
-            y=risk_pct_sorted.index.tolist(),
-            x=risk_pct_sorted.values.tolist(),
-            orientation='h',
-            marker_color=bar_colors,
-            marker_line_color='rgba(0,0,0,0.08)',
-            marker_line_width=1,
-            text=[f'{v:.0f}%' for v in risk_pct_sorted.values],
-            textposition='outside',
-            textfont_color='#1B2A4A',
+        fig.add_trace(go.Scatter(
+            x=monthly["miesiac_str"], y=monthly["risk_pct"],
+            mode="lines+markers",
+            line=dict(color="#C50F1F", width=2.5),
+            marker=dict(size=6, color="#C50F1F", line=dict(color="#FFFFFF", width=1.5)),
+            fill="tozeroy", fillcolor="rgba(197,15,31,0.07)",
+            hovertemplate="%{x}: %{y:.1f}%<extra></extra>",
         ))
-        fig.add_vline(x=50, line_dash='dot', line_color='#6B7A99', line_width=1)
+        avg = monthly["risk_pct"].mean()
+        fig.add_hline(
+            y=avg, line_dash="dash", line_color="#8896A8", line_width=1.5,
+            annotation_text=f"Śr. {avg:.0f}%",
+            annotation_position="top right",
+            annotation_font_color="#6B7A99",
+        )
         fig.update_layout(
-            **_chart_layout,
-            xaxis_title='% zamówień wysokiego ryzyka',
-            xaxis_range=[0, 115],
-            showlegend=False,
+            **_chart_base,
+            xaxis=dict(title="", **_ax),
+            yaxis=dict(title="% zamówień wysokiego ryzyka", ticksuffix="%",
+                       range=[0, 100], **_ax),
+            margin=dict(l=20, r=80, t=20, b=20),
+            height=260, showlegend=False,
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Czerwony > 50% · Pomarańczowy > 30% · Niebieski < 30%")
 
-st.divider()
+        if len(monthly) >= 2:
+            last  = monthly["risk_pct"].iloc[-1]
+            prev  = monthly["risk_pct"].iloc[-2]
+            delta = last - prev
+            arrow = "▲" if delta > 0 else "▼"
+            dclr  = "#C50F1F" if delta > 0 else "#107C10"
+            st.markdown(
+                f"<span style='color:{dclr}; font-weight:700;'>"
+                f"{arrow} {abs(delta):.1f} pp</span>"
+                f"<span style='color:#8896A8; margin-left:8px;'>"
+                f"vs poprzedni miesiąc · Ostatni miesiąc: "
+                f"<strong style='color:#1B2A4A;'>{last:.0f}%</strong></span>",
+                unsafe_allow_html=True,
+            )
 
-# ---------------------------------------------------------------------------
-# Wykres — portfel sprzedawców (stacked bar)
-# ---------------------------------------------------------------------------
+    st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
+    section_header("Tabela — zamówienia do opłacenia w ciągu 30 dni")
 
-if has_sprzedawca:
-    st.subheader("Portfel zamówień wg sprzedawcy")
-    sp = sprzedawca_stats.copy()
-    sp['low_risk'] = sp['total'] - sp['high_risk']
-    sp = sp.sort_values('risk_pct', ascending=True)
+    col_map = {
+        "Nazwa klienta": "Klient", "Sprzedawca": "Sprzedawca", "Branża": "Branża",
+        "Data zamowienia": "Data", "Zapłacono": "Wartość (PLN)",
+        "prediction_score": "Predykcja (PLN)",
+    }
 
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=sp.index.tolist(),
-        x=sp['low_risk'].tolist(),
-        name='Niskie ryzyko',
-        orientation='h',
-        marker_color='#0065BD',
-        marker_line_color='rgba(0,0,0,0.08)',
-        marker_line_width=1,
-    ))
-    fig.add_trace(go.Bar(
-        y=sp.index.tolist(),
-        x=sp['high_risk'].tolist(),
-        name='Wysokie ryzyko',
-        orientation='h',
-        marker_color='#C50F1F',
-        marker_line_color='rgba(0,0,0,0.08)',
-        marker_line_width=1,
-        text=[f"{v:.0f}%" for v in sp['risk_pct'].values],
-        textposition='outside',
-        textfont_color='#C50F1F',
-    ))
-    fig.update_layout(
-        barmode='stack',
-        **_chart_layout,
-        margin=dict(l=20, r=60, t=20, b=20),
-        xaxis_title='Liczba zamówień',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    upcoming = df_hr[df_hr["dni_do_terminu"].between(0, 30)].copy()
+    if not upcoming.empty:
+        show_cols = [k for k in col_map if k in upcoming.columns]
+        df_tbl = upcoming[show_cols].rename(columns=col_map)
+        df_tbl.insert(0, "Termin (dni)", upcoming["dni_do_terminu"].astype(int).values)
+        df_tbl = df_tbl.sort_values("Termin (dni)").reset_index(drop=True)
+        df_tbl.index += 1
+        fmt = {c: "{:,.0f}" for c in ["Wartość (PLN)", "Predykcja (PLN)"] if c in df_tbl.columns}
+        st.dataframe(df_tbl.style.format(fmt), use_container_width=True)
+    else:
+        st.info("Brak zamówień wysokiego ryzyka z terminem w ciągu 30 dni.")
+
+# ═══════════════════════════════════════════════════════ TAB 4 ══════
+with tab4:
+
+    section_header("Wyjaśnialność modelu — SHAP")
+    st.markdown(
+        "**Beeswarm**: każda kropka = jedno zamówienie, oś X = wpływ na predykcję. "
+        "**Waterfall**: rozkład predykcji dla wybranego rekordu krok po kroku."
     )
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption("Wartość % po prawej = udział wysokiego ryzyka w portfelu sprzedawcy.")
 
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Tabela — top 20 wysokiego ryzyka
-# ---------------------------------------------------------------------------
-
-st.markdown("""
-<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>
-    <div style='width:4px;height:24px;background:#C50F1F;border-radius:2px;'></div>
-    <h3 style='margin:0;color:#1B2A4A;'>Top 20 zamówień wymagających interwencji</h3>
-</div>
-""", unsafe_allow_html=True)
-st.caption(
-    "Posortowane od najwyższej przewidywanej wartości. "
-    "Im wyższy score przy wysokim ryzyku, tym większy potencjalny wpływ na cashflow."
-)
-
-col_map = {
-    'Nazwa klienta': 'Klient',
-    'Sprzedawca': 'Sprzedawca',
-    'Branża': 'Branża',
-    'Data zamowienia': 'Data',
-    'Zapłacono': 'Wartość (PLN)',
-    'prediction_score': 'Predykcja modelu (PLN)',
-}
-show_cols = [k for k in col_map if k in df_out.columns]
-df_high = (
-    df_out[df_out['prediction_label'] == 0]
-    .sort_values('prediction_score', ascending=False)
-    .head(20)[show_cols]
-    .rename(columns=col_map)
-    .reset_index(drop=True)
-)
-df_high.index += 1
-df_high.insert(0, 'Ryzyko', '🔴 Wysokie')
-
-def color_rows(row):
-    return ['background-color: #FFF5F5; color: #1B2A4A'] * len(row)
-
-fmt = {}
-if 'Wartość (PLN)' in df_high.columns:
-    fmt['Wartość (PLN)'] = '{:,.0f}'
-if 'Predykcja modelu (PLN)' in df_high.columns:
-    fmt['Predykcja modelu (PLN)'] = '{:,.0f}'
-
-styled_table = df_high.style.apply(color_rows, axis=1).format(fmt)
-st.dataframe(styled_table, use_container_width=True)
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# SHAP — matplotlib (bez zmian wizualnych)
-# ---------------------------------------------------------------------------
-
-st.markdown("""
-<div style='background:#FFFFFF;border:1px solid #E0E4EA;
-            border-left:4px solid #0065BD;
-            border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;
-            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
-    <strong style='color:#0065BD;'>Model Explainability — SHAP</strong><br>
-    <span style='color:#6B7A99;font-size:0.85rem;'>
-    Gradient Boosting · 100 estimators · R²=0.91 · MAE=1 302 PLN
-    </span>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown(
-    "**Beeswarm** — każda kropka = jedno zamówienie. "
-    "Czerwony = wysoka wartość cechy, niebieski = niska. "
-    "Pozycja w prawo = cecha *podnosi* predykcję, w lewo = *obniża*.\n\n"
-    "**Waterfall** — wyjaśnienie jednej konkretnej predykcji: "
-    "od wartości bazowej modelu do finalnego wyniku, krok po kroku przez każdą cechę."
-)
-
-try:
-    _pre = pipeline.named_steps['pre']
-    _model = pipeline.named_steps['model']
-    X_transformed = _pre.transform(X_all)
-
-    cat_feature_names = (
-        _pre.named_transformers_['cat']
-        .named_steps['encoder']
-        .get_feature_names_out(cat_cols)
-        .tolist()
-    )
-    feature_names = num_cols + cat_feature_names
-
-    explainer = shap.TreeExplainer(_model)
-    shap_values = explainer(X_transformed)
-    shap_values.feature_names = feature_names
-
-    shap_col1, shap_col2 = st.columns(2)
-
-    with shap_col1:
-        st.markdown("**Globalny wpływ cech (Beeswarm)**")
-        plt.figure()
-        shap.plots.beeswarm(shap_values, max_display=10, show=False)
-        st.pyplot(plt.gcf())
-        plt.close()
-
-    with shap_col2:
-        st.markdown("**Wyjaśnienie pojedynczej predykcji (Waterfall)**")
-        sample_idx = st.slider("Wybierz rekord do analizy", 0, len(X_all) - 1, 0)
-        rec = df_out.iloc[sample_idx]
-        risk_label = "🔴 Wysokie ryzyko" if rec['prediction_label'] == 0 else "🟢 Niskie ryzyko"
-        klient = rec.get('Nazwa klienta', '—')
-        st.caption(
-            f"Rekord #{sample_idx + 1} · Klient: **{klient}** · "
-            f"Predykcja: **{rec['prediction_score']:,.0f} PLN** · {risk_label}"
+    try:
+        _pre   = pipeline.named_steps["pre"]
+        _model = pipeline.named_steps["model"]
+        X_tf   = _pre.transform(X_all)
+        feat_names = num_cols + (
+            _pre.named_transformers_["cat"]
+            .named_steps["enc"]
+            .get_feature_names_out(cat_cols)
+            .tolist()
         )
-        plt.figure()
-        shap.plots.waterfall(shap_values[sample_idx], max_display=10, show=False)
-        st.pyplot(plt.gcf())
-        plt.close()
+        explainer   = shap.TreeExplainer(_model)
+        shap_values = explainer(X_tf)
+        shap_values.feature_names = feat_names
 
-except Exception as e:
-    st.warning(f"SHAP niedostępny: {e}")
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown("**Globalny wpływ cech (Beeswarm)**")
+            plt.figure()
+            shap.plots.beeswarm(shap_values, max_display=10, show=False)
+            st.pyplot(plt.gcf())
+            plt.close()
 
-st.divider()
+        with sc2:
+            st.markdown("**Wyjaśnienie konkretnej predykcji (Waterfall)**")
+            sample_idx = st.slider("Wybierz rekord", 0, len(X_all) - 1, 0)
+            rec = df_out.iloc[sample_idx]
+            rlbl = "🔴 Wysokie" if rec["prediction_label"] == 0 else "🟢 Niskie"
+            st.caption(
+                f"Rekord #{sample_idx+1} · {rec.get('Nazwa klienta','—')} · "
+                f"{rec['prediction_score']:,.0f} PLN · {rlbl}"
+            )
+            plt.figure()
+            shap.plots.waterfall(shap_values[sample_idx], max_display=10, show=False)
+            st.pyplot(plt.gcf())
+            plt.close()
 
-# ---------------------------------------------------------------------------
-# Expander — pełna tabela
-# ---------------------------------------------------------------------------
+    except Exception as e:
+        st.warning(f"SHAP niedostępny: {e}")
 
-with st.expander("Pełna tabela danych z predykcjami"):
-    st.dataframe(df_out, use_container_width=True)
-
-# ---------------------------------------------------------------------------
-# Expander — metodologia
-# ---------------------------------------------------------------------------
-
-with st.expander("Jak działa model?"):
+    st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+    section_header("Metryki modelu")
     st.markdown("""
-**Pipeline ML (scikit-learn):**
-1. **Feature engineering** — z daty zamówienia wyciągamy miesiąc, dzień tygodnia i kwartał
-2. **Preprocessing** — numeryczne: imputacja medianą + standaryzacja;
-   kategoryczne: imputacja stałą + One-Hot Encoding
-3. **Model** — Gradient Boosting Regressor (100 drzew, random_state=42)
-4. **Klasyfikacja ryzyka** — predykcja wartości PLN porównywana z progiem ustawionym przez użytkownika
+| Metryka | Wartość |
+|---|---|
+| **R²** | 0.91 |
+| **MAE** | 1 302 PLN |
+| **RMSE** | 1 963 PLN |
+| Algorytm | GradientBoostingRegressor |
+| Drzewa | 100 |
+| Preprocessing | StandardScaler + OneHotEncoder |
+| Feature engineering | miesiąc, dzień tygodnia, kwartał |
+""")
 
-**Metryki ewaluacji (zbiór testowy 20%):**
-- R² = 0.91 — model wyjaśnia 91% wariancji wartości płatności
-- MAE = 1 302 PLN — średni błąd bezwzględny na pojedynczym zamówieniu
-- RMSE = 1 963 PLN
+    with st.expander("Pełna tabela danych z predykcjami"):
+        st.dataframe(df_out, use_container_width=True)
 
-**SHAP** (SHapley Additive exPlanations) — matematycznie rygorystyczna metoda wyjaśniania predykcji.
-Każda cecha otrzymuje wkład (pozytywny lub negatywny) w finalną predykcję dla konkretnego rekordu,
-co pozwala zrozumieć *dlaczego* model podjął daną decyzję.
-    """)
-
-# ---------------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────── Footer ──────
 
 st.markdown("""
-<div style='text-align:center;color:#6B7A99;font-size:0.8rem;
-            padding:2rem 0 1rem;border-top:1px solid #E0E4EA;margin-top:2rem;'>
-    R²=0.91 · MAE=1 302 PLN · Gradient Boosting · scikit-learn Pipeline
-    &nbsp;|&nbsp;
-    <a href='https://github.com/webdevanki/-predicting-sales-app'
-       style='color:#0065BD;text-decoration:none;'>GitHub →</a>
-</div>
-""", unsafe_allow_html=True)
+<div style='text-align:center; color:#8896A8; font-size:0.76rem;
+            padding:1.5rem 0 0.5rem; border-top:1px solid #E0E4EA; margin-top:1rem;'>
+  GradientBoosting · R²=0.91 · scikit-learn Pipeline · SHAP · Streamlit
+</div>""", unsafe_allow_html=True)
