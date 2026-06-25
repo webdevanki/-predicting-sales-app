@@ -126,30 +126,66 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-.stApp { background-color: #0f1117; }
-
-[data-testid="metric-container"] {
-    background: #1e2130;
-    border: 1px solid #2d3250;
-    border-radius: 12px;
-    padding: 16px;
+.stApp {
+    background-color: #F4F6F9;
+    font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
-h2, h3 { color: #e8eaf0 !important; }
+.main .block-container {
+    padding: 2rem 3rem;
+    max-width: 1200px;
+}
 
-[data-testid="stSidebar"] { background: #13161f; }
+[data-testid="stSidebar"] {
+    background: #FFFFFF;
+    border-right: 1px solid #E0E4EA;
+}
 
-[data-testid="stDataFrame"] { border-radius: 8px; }
+[data-testid="metric-container"] {
+    background: #FFFFFF;
+    border: 1px solid #E0E4EA;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+h1 {
+    color: #1B2A4A !important;
+    font-size: 1.8rem !important;
+    font-weight: 700 !important;
+    border-bottom: 3px solid #0065BD;
+    padding-bottom: 8px;
+}
+
+h2, h3 {
+    color: #1B2A4A !important;
+    font-weight: 600 !important;
+}
+
+hr { border-color: #E0E4EA; margin: 1.5rem 0; }
+
+[data-testid="stDataFrame"] {
+    border-radius: 8px;
+    border: 1px solid #E0E4EA;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+[data-testid="stAlert"] {
+    border-radius: 6px;
+    border-left: 4px solid #0065BD;
+}
 
 [data-testid="stExpander"] {
-    background: #1e2130;
-    border: 1px solid #2d3250;
+    background: #FFFFFF;
+    border: 1px solid #E0E4EA;
     border-radius: 8px;
 }
 
-hr { border-color: #2d3250; }
+[data-testid="stRadio"] label { color: #1B2A4A !important; }
 
-[data-testid="stAlert"] { border-radius: 8px; }
+.stSlider > div > div > div { background: #0065BD !important; }
+
+.stCaption { color: #6B7A99 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -159,12 +195,14 @@ hr { border-color: #2d3250; }
 
 with st.sidebar:
     st.markdown("""
-<div style='text-align:center; padding:16px 0 8px;'>
-    <div style='font-size:1.4rem; font-weight:700; color:#4F8EF7;'>
-        💳 B2B Risk
+<div style='padding:16px 0 20px; border-bottom:1px solid #E0E4EA;
+            margin-bottom:16px;'>
+    <div style='font-size:1.1rem; font-weight:700; color:#0065BD;'>
+        💳 B2B Payment Risk
     </div>
-    <div style='font-size:0.7rem; color:#888; letter-spacing:0.1em;'>
-        PAYMENT PREDICTION
+    <div style='font-size:0.7rem; color:#6B7A99;
+                letter-spacing:0.1em; margin-top:2px;'>
+        PREDICTION DASHBOARD
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -262,7 +300,7 @@ if has_sprzedawca:
     worst_sprzedawca = sprzedawca_stats['risk_pct'].idxmax()
 
 # ---------------------------------------------------------------------------
-# KPI — kolorowe karty HTML
+# KPI — karty Power BI style
 # ---------------------------------------------------------------------------
 
 total = len(df_out)
@@ -273,64 +311,68 @@ value_at_risk = float(df_out.loc[df_out['prediction_label'] == 0, 'prediction_sc
 k1, k2, k3, k4 = st.columns(4)
 
 k1.markdown(f"""
-<div style='background:#1e2130;border:1px solid #4F8EF7;
-            border-radius:12px;padding:20px 16px;text-align:center;'>
-    <div style='color:#4F8EF7;font-size:0.8rem;font-weight:600;
-                letter-spacing:0.05em;margin-bottom:8px;'>
-        ŁĄCZNA LICZBA ZAMÓWIEŃ
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-top:4px solid #0065BD;border-radius:8px;
+            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
+    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
+                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
+        Łączna liczba zamówień
     </div>
-    <div style='color:#4F8EF7;font-size:2.2rem;font-weight:700;line-height:1;'>
+    <div style='color:#0065BD;font-size:2.2rem;font-weight:700;line-height:1;'>
         {total}
     </div>
-    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
         wszystkie rekordy
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 k2.markdown(f"""
-<div style='background:#1e2130;border:1px solid #4CAF50;
-            border-radius:12px;padding:20px 16px;text-align:center;'>
-    <div style='color:#4CAF50;font-size:0.8rem;font-weight:600;
-                letter-spacing:0.05em;margin-bottom:8px;'>
-        🟢 NISKIE RYZYKO
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-top:4px solid #107C10;border-radius:8px;
+            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
+    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
+                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
+        Niskie ryzyko
     </div>
-    <div style='color:#4CAF50;font-size:2.2rem;font-weight:700;line-height:1;'>
+    <div style='color:#107C10;font-size:2.2rem;font-weight:700;line-height:1;'>
         {n_low / total * 100:.1f}%
     </div>
-    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
         {n_low} zamówień ≥ {threshold:,} PLN
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 k3.markdown(f"""
-<div style='background:#1e2130;border:1px solid #E05A5A;
-            border-radius:12px;padding:20px 16px;text-align:center;'>
-    <div style='color:#E05A5A;font-size:0.8rem;font-weight:600;
-                letter-spacing:0.05em;margin-bottom:8px;'>
-        🔴 WYSOKIE RYZYKO
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-top:4px solid #C50F1F;border-radius:8px;
+            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
+    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
+                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
+        Wysokie ryzyko
     </div>
-    <div style='color:#E05A5A;font-size:2.2rem;font-weight:700;line-height:1;'>
+    <div style='color:#C50F1F;font-size:2.2rem;font-weight:700;line-height:1;'>
         {n_high / total * 100:.1f}%
     </div>
-    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
         {n_high} zamówień &lt; {threshold:,} PLN
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 k4.markdown(f"""
-<div style='background:#1e2130;border:1px solid #F59E0B;
-            border-radius:12px;padding:20px 16px;text-align:center;'>
-    <div style='color:#F59E0B;font-size:0.8rem;font-weight:600;
-                letter-spacing:0.05em;margin-bottom:8px;'>
-        ⚠️ WARTOŚĆ ZAGROŻONA
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-top:4px solid #E8792A;border-radius:8px;
+            padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
+    <div style='color:#6B7A99;font-size:0.75rem;font-weight:600;
+                letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
+        Wartość zagrożona
     </div>
-    <div style='color:#F59E0B;font-size:2.2rem;font-weight:700;line-height:1;'>
+    <div style='color:#E8792A;font-size:2.2rem;font-weight:700;line-height:1;'>
         {value_at_risk:,.0f}
     </div>
-    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+    <div style='color:#6B7A99;font-size:0.8rem;margin-top:6px;'>
         PLN łącznie
     </div>
 </div>
@@ -339,7 +381,7 @@ k4.markdown(f"""
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Wnioski modelu
+# Wnioski modelu — Power BI cards
 # ---------------------------------------------------------------------------
 
 st.subheader("Kluczowe wnioski")
@@ -348,37 +390,80 @@ ins1, ins2, ins3 = st.columns(3)
 
 if has_branza:
     wr = branza_stats.loc[worst_branza]
-    with ins1:
-        st.error(
-            f"**Branża najwyższego ryzyka**\n\n"
-            f"**{worst_branza}**\n\n"
-            f"{wr['risk_pct']:.0f}% zamówień poniżej progu "
-            f"({int(wr['high_risk'])} z {int(wr['total'])})"
-        )
+    ins1.markdown(f"""
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-left:5px solid #C50F1F;
+            border-radius:0 8px 8px 0;padding:16px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
+    <div style='color:#C50F1F;font-size:0.72rem;font-weight:600;
+                text-transform:uppercase;letter-spacing:0.06em;'>
+        ▲ Branża najwyższego ryzyka
+    </div>
+    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
+        {worst_branza}
+    </div>
+    <div style='color:#6B7A99;font-size:0.82rem;'>
+        {wr['risk_pct']:.0f}% zamówień poniżej progu
+        ({int(wr['high_risk'])} z {int(wr['total'])})
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
     br = branza_stats.loc[best_branza]
-    with ins2:
-        st.success(
-            f"**Branża najniższego ryzyka**\n\n"
-            f"**{best_branza}**\n\n"
-            f"{br['risk_pct']:.0f}% zamówień poniżej progu "
-            f"({int(br['high_risk'])} z {int(br['total'])})"
-        )
+    ins2.markdown(f"""
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-left:5px solid #107C10;
+            border-radius:0 8px 8px 0;padding:16px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
+    <div style='color:#107C10;font-size:0.72rem;font-weight:600;
+                text-transform:uppercase;letter-spacing:0.06em;'>
+        ▼ Branża najniższego ryzyka
+    </div>
+    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
+        {best_branza}
+    </div>
+    <div style='color:#6B7A99;font-size:0.82rem;'>
+        {br['risk_pct']:.0f}% zamówień poniżej progu
+        ({int(br['high_risk'])} z {int(br['total'])})
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 if has_sprzedawca:
     sr = sprzedawca_stats.loc[worst_sprzedawca]
-    with ins3:
-        st.warning(
-            f"**Sprzedawca z największym ryzykiem**\n\n"
-            f"**{worst_sprzedawca}**\n\n"
-            f"{sr['risk_pct']:.0f}% zamówień wysokiego ryzyka "
-            f"({int(sr['high_risk'])} z {int(sr['total'])})"
-        )
+    ins3.markdown(f"""
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-left:5px solid #E8792A;
+            border-radius:0 8px 8px 0;padding:16px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
+    <div style='color:#E8792A;font-size:0.72rem;font-weight:600;
+                text-transform:uppercase;letter-spacing:0.06em;'>
+        ● Sprzedawca z największym ryzykiem
+    </div>
+    <div style='color:#1B2A4A;font-size:1.1rem;font-weight:700;margin:6px 0;'>
+        {worst_sprzedawca}
+    </div>
+    <div style='color:#6B7A99;font-size:0.82rem;'>
+        {sr['risk_pct']:.0f}% zamówień wysokiego ryzyka
+        ({int(sr['high_risk'])} z {int(sr['total'])})
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Wykresy — histogram + branże (Plotly)
+# Wykresy — histogram + branże (Plotly, jasny styl)
 # ---------------------------------------------------------------------------
+
+_chart_layout = dict(
+    plot_bgcolor='#FFFFFF',
+    paper_bgcolor='#F4F6F9',
+    font=dict(family='Segoe UI', color='#1B2A4A'),
+    xaxis=dict(gridcolor='#F0F2F5', linecolor='#E0E4EA'),
+    yaxis=dict(gridcolor='#F0F2F5', linecolor='#E0E4EA'),
+    margin=dict(l=20, r=20, t=40, b=20),
+)
 
 col_left, col_right = st.columns(2)
 
@@ -390,29 +475,23 @@ with col_left:
     fig = px.histogram(
         df_out, x='prediction_score',
         nbins=40,
-        template='plotly_dark',
-        color_discrete_sequence=['#4F8EF7'],
+        template='plotly_white',
+        color_discrete_sequence=['#0065BD'],
         labels={'prediction_score': 'Przewidziana wartość (PLN)', 'count': 'Liczba zamówień'}
     )
     fig.add_vrect(
         x0=score_min, x1=threshold,
-        fillcolor='#E05A5A', opacity=0.08,
+        fillcolor='#C50F1F', opacity=0.06,
         layer='below', line_width=0
     )
     fig.add_vline(
         x=threshold, line_dash='dash',
-        line_color='#E05A5A', line_width=2,
+        line_color='#C50F1F', line_width=2,
         annotation_text=f'Próg: {threshold:,} PLN',
-        annotation_font_color='#E05A5A',
+        annotation_font_color='#C50F1F',
         annotation_position='top right'
     )
-    fig.update_layout(
-        plot_bgcolor='#1e2130',
-        paper_bgcolor='#1e2130',
-        font_color='#e8eaf0',
-        margin=dict(l=20, r=20, t=40, b=20),
-        showlegend=False,
-    )
+    fig.update_layout(**_chart_layout)
     st.plotly_chart(fig, use_container_width=True)
     st.caption("Czerwone tło = strefa wysokiego ryzyka (poniżej progu).")
 
@@ -421,7 +500,7 @@ with col_right:
     if has_branza:
         risk_pct_sorted = branza_stats['risk_pct'].sort_values()
         bar_colors = [
-            '#E05A5A' if v > 50 else '#F59E0B' if v > 30 else '#4F8EF7'
+            '#C50F1F' if v > 50 else '#E8792A' if v > 30 else '#0065BD'
             for v in risk_pct_sorted.values
         ]
         fig = go.Figure()
@@ -430,19 +509,15 @@ with col_right:
             x=risk_pct_sorted.values.tolist(),
             orientation='h',
             marker_color=bar_colors,
-            marker_line_color='rgba(0,0,0,0.3)',
+            marker_line_color='rgba(0,0,0,0.08)',
             marker_line_width=1,
             text=[f'{v:.0f}%' for v in risk_pct_sorted.values],
             textposition='outside',
-            textfont_color='#e8eaf0',
+            textfont_color='#1B2A4A',
         ))
-        fig.add_vline(x=50, line_dash='dot', line_color='#888', line_width=1)
+        fig.add_vline(x=50, line_dash='dot', line_color='#6B7A99', line_width=1)
         fig.update_layout(
-            template='plotly_dark',
-            plot_bgcolor='#1e2130',
-            paper_bgcolor='#1e2130',
-            font_color='#e8eaf0',
-            margin=dict(l=20, r=60, t=20, b=20),
+            **_chart_layout,
             xaxis_title='% zamówień wysokiego ryzyka',
             xaxis_range=[0, 115],
             showlegend=False,
@@ -453,7 +528,7 @@ with col_right:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Wykres — portfel sprzedawców (stacked bar, Plotly)
+# Wykres — portfel sprzedawców (stacked bar)
 # ---------------------------------------------------------------------------
 
 if has_sprzedawca:
@@ -468,8 +543,8 @@ if has_sprzedawca:
         x=sp['low_risk'].tolist(),
         name='Niskie ryzyko',
         orientation='h',
-        marker_color='#4F8EF7',
-        marker_line_color='rgba(0,0,0,0.3)',
+        marker_color='#0065BD',
+        marker_line_color='rgba(0,0,0,0.08)',
         marker_line_width=1,
     ))
     fig.add_trace(go.Bar(
@@ -477,19 +552,16 @@ if has_sprzedawca:
         x=sp['high_risk'].tolist(),
         name='Wysokie ryzyko',
         orientation='h',
-        marker_color='#E05A5A',
-        marker_line_color='rgba(0,0,0,0.3)',
+        marker_color='#C50F1F',
+        marker_line_color='rgba(0,0,0,0.08)',
         marker_line_width=1,
         text=[f"{v:.0f}%" for v in sp['risk_pct'].values],
         textposition='outside',
-        textfont_color='#E05A5A',
+        textfont_color='#C50F1F',
     ))
     fig.update_layout(
         barmode='stack',
-        template='plotly_dark',
-        plot_bgcolor='#1e2130',
-        paper_bgcolor='#1e2130',
-        font_color='#e8eaf0',
+        **_chart_layout,
         margin=dict(l=20, r=60, t=20, b=20),
         xaxis_title='Liczba zamówień',
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
@@ -503,7 +575,12 @@ st.divider()
 # Tabela — top 20 wysokiego ryzyka
 # ---------------------------------------------------------------------------
 
-st.subheader("Top 20 zamówień wysokiego ryzyka — wymagają interwencji")
+st.markdown("""
+<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>
+    <div style='width:4px;height:24px;background:#C50F1F;border-radius:2px;'></div>
+    <h3 style='margin:0;color:#1B2A4A;'>Top 20 zamówień wymagających interwencji</h3>
+</div>
+""", unsafe_allow_html=True)
 st.caption(
     "Posortowane od najwyższej przewidywanej wartości. "
     "Im wyższy score przy wysokim ryzyku, tym większy potencjalny wpływ na cashflow."
@@ -529,7 +606,7 @@ df_high.index += 1
 df_high.insert(0, 'Ryzyko', '🔴 Wysokie')
 
 def color_rows(row):
-    return ['background-color: #2a1a1a; color: #e8eaf0'] * len(row)
+    return ['background-color: #FFF5F5; color: #1B2A4A'] * len(row)
 
 fmt = {}
 if 'Wartość (PLN)' in df_high.columns:
@@ -543,14 +620,16 @@ st.dataframe(styled_table, use_container_width=True)
 st.divider()
 
 # ---------------------------------------------------------------------------
-# SHAP
+# SHAP — matplotlib (bez zmian wizualnych)
 # ---------------------------------------------------------------------------
 
 st.markdown("""
-<div style='background:#1e2130;border-left:4px solid #4F8EF7;
-            border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;'>
-    <strong style='color:#4F8EF7;'>Model Explainability — SHAP</strong><br>
-    <span style='color:#888;font-size:0.85rem;'>
+<div style='background:#FFFFFF;border:1px solid #E0E4EA;
+            border-left:4px solid #0065BD;
+            border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
+    <strong style='color:#0065BD;'>Model Explainability — SHAP</strong><br>
+    <span style='color:#6B7A99;font-size:0.85rem;'>
     Gradient Boosting · 100 estimators · R²=0.91 · MAE=1 302 PLN
     </span>
 </div>
@@ -644,11 +723,12 @@ co pozwala zrozumieć *dlaczego* model podjął daną decyzję.
 # Footer
 # ---------------------------------------------------------------------------
 
-st.markdown(
-    "<div style='text-align:center;color:#555;font-size:0.82em;padding-top:2rem;'>"
-    "R²=0.91 · MAE=1 302 PLN · Gradient Boosting · scikit-learn Pipeline | "
-    "<a href='https://github.com/webdevanki/-predicting-sales-app' style='color:#4F8EF7;'>"
-    "GitHub</a>"
-    "</div>",
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<div style='text-align:center;color:#6B7A99;font-size:0.8rem;
+            padding:2rem 0 1rem;border-top:1px solid #E0E4EA;margin-top:2rem;'>
+    R²=0.91 · MAE=1 302 PLN · Gradient Boosting · scikit-learn Pipeline
+    &nbsp;|&nbsp;
+    <a href='https://github.com/webdevanki/-predicting-sales-app'
+       style='color:#0065BD;text-decoration:none;'>GitHub →</a>
+</div>
+""", unsafe_allow_html=True)
