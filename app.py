@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
 import shap
 
 from sklearn.pipeline import Pipeline
@@ -84,8 +86,9 @@ def engineer_features(df_raw):
     return df_fe
 
 
-def train_model(df):
-    df_fe = engineer_features(df)
+@st.cache_resource
+def train_model(df_hash, _df):
+    df_fe = engineer_features(_df)
     X = df_fe.drop(columns=['Zapłacono'])
     y = df_fe['Zapłacono']
 
@@ -121,11 +124,51 @@ st.set_page_config(
     page_icon="💳"
 )
 
+st.markdown("""
+<style>
+.stApp { background-color: #0f1117; }
+
+[data-testid="metric-container"] {
+    background: #1e2130;
+    border: 1px solid #2d3250;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+h2, h3 { color: #e8eaf0 !important; }
+
+[data-testid="stSidebar"] { background: #13161f; }
+
+[data-testid="stDataFrame"] { border-radius: 8px; }
+
+[data-testid="stExpander"] {
+    background: #1e2130;
+    border: 1px solid #2d3250;
+    border-radius: 8px;
+}
+
+hr { border-color: #2d3250; }
+
+[data-testid="stAlert"] { border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    st.markdown("""
+<div style='text-align:center; padding:16px 0 8px;'>
+    <div style='font-size:1.4rem; font-weight:700; color:#4F8EF7;'>
+        💳 B2B Risk
+    </div>
+    <div style='font-size:0.7rem; color:#888; letter-spacing:0.1em;'>
+        PAYMENT PREDICTION
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
     st.title("Ustawienia")
 
     mode = st.radio("Źródło danych:", ["Dane demo", "Wgraj własny CSV"])
@@ -150,7 +193,7 @@ with st.sidebar:
     st.markdown(
         "- scikit-learn · GradientBoosting\n"
         "- SHAP · TreeExplainer\n"
-        "- MLflow · Streamlit\n"
+        "- Plotly · Streamlit\n"
         "- pandas · numpy"
     )
     st.markdown("[GitHub →](https://github.com/webdevanki/-predicting-sales-app)")
@@ -190,14 +233,14 @@ st.divider()
 # ---------------------------------------------------------------------------
 
 with st.spinner("Trenuję model..."):
-    pipeline, X_all, num_cols, cat_cols = train_model(df_raw)
+    df_hash = int(pd.util.hash_pandas_object(df_raw, index=True).sum())
+    pipeline, X_all, num_cols, cat_cols = train_model(df_hash, df_raw)
 
 scores = pipeline.predict(X_all)
 df_out = df_raw.copy()
 df_out['prediction_score'] = scores.round(2)
 df_out['prediction_label'] = (scores >= threshold).astype(int)  # 1=niskie, 0=wysokie ryzyko
 
-# Statystyki segmentowe (obliczone raz, używane w wielu sekcjach)
 has_branza = 'Branża' in df_out.columns
 has_sprzedawca = 'Sprzedawca' in df_out.columns
 
@@ -219,33 +262,79 @@ if has_sprzedawca:
     worst_sprzedawca = sprzedawca_stats['risk_pct'].idxmax()
 
 # ---------------------------------------------------------------------------
-# KPI
+# KPI — kolorowe karty HTML
 # ---------------------------------------------------------------------------
 
 total = len(df_out)
 n_high = int((df_out['prediction_label'] == 0).sum())
 n_low = int((df_out['prediction_label'] == 1).sum())
-avg_score = float(df_out['prediction_score'].mean())
 value_at_risk = float(df_out.loc[df_out['prediction_label'] == 0, 'prediction_score'].sum())
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric(
-    "Łączna liczba zamówień", total,
-    help="Wszystkie zamówienia w analizowanym zbiorze."
-)
-k2.metric(
-    "Niskie ryzyko", f"{n_low / total * 100:.1f}%", f"{n_low} zamówień",
-    help=f"Predykcja >= {threshold:,} PLN — płatność spodziewana w pełnej kwocie."
-)
-k3.metric(
-    "Wysokie ryzyko", f"{n_high / total * 100:.1f}%", f"-{n_high} zamówień",
-    delta_color="inverse",
-    help=f"Predykcja < {threshold:,} PLN — zamówienia wymagające uwagi działu sprzedaży."
-)
-k4.metric(
-    "Wartość zagrożona", f"{value_at_risk:,.0f} PLN",
-    help="Łączna suma przewidywanych płatności dla zamówień wysokiego ryzyka."
-)
+
+k1.markdown(f"""
+<div style='background:#1e2130;border:1px solid #4F8EF7;
+            border-radius:12px;padding:20px 16px;text-align:center;'>
+    <div style='color:#4F8EF7;font-size:0.8rem;font-weight:600;
+                letter-spacing:0.05em;margin-bottom:8px;'>
+        ŁĄCZNA LICZBA ZAMÓWIEŃ
+    </div>
+    <div style='color:#4F8EF7;font-size:2.2rem;font-weight:700;line-height:1;'>
+        {total}
+    </div>
+    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+        wszystkie rekordy
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+k2.markdown(f"""
+<div style='background:#1e2130;border:1px solid #4CAF50;
+            border-radius:12px;padding:20px 16px;text-align:center;'>
+    <div style='color:#4CAF50;font-size:0.8rem;font-weight:600;
+                letter-spacing:0.05em;margin-bottom:8px;'>
+        🟢 NISKIE RYZYKO
+    </div>
+    <div style='color:#4CAF50;font-size:2.2rem;font-weight:700;line-height:1;'>
+        {n_low / total * 100:.1f}%
+    </div>
+    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+        {n_low} zamówień ≥ {threshold:,} PLN
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+k3.markdown(f"""
+<div style='background:#1e2130;border:1px solid #E05A5A;
+            border-radius:12px;padding:20px 16px;text-align:center;'>
+    <div style='color:#E05A5A;font-size:0.8rem;font-weight:600;
+                letter-spacing:0.05em;margin-bottom:8px;'>
+        🔴 WYSOKIE RYZYKO
+    </div>
+    <div style='color:#E05A5A;font-size:2.2rem;font-weight:700;line-height:1;'>
+        {n_high / total * 100:.1f}%
+    </div>
+    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+        {n_high} zamówień &lt; {threshold:,} PLN
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+k4.markdown(f"""
+<div style='background:#1e2130;border:1px solid #F59E0B;
+            border-radius:12px;padding:20px 16px;text-align:center;'>
+    <div style='color:#F59E0B;font-size:0.8rem;font-weight:600;
+                letter-spacing:0.05em;margin-bottom:8px;'>
+        ⚠️ WARTOŚĆ ZAGROŻONA
+    </div>
+    <div style='color:#F59E0B;font-size:2.2rem;font-weight:700;line-height:1;'>
+        {value_at_risk:,.0f}
+    </div>
+    <div style='color:#888;font-size:0.78rem;margin-top:6px;'>
+        PLN łącznie
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
@@ -288,53 +377,83 @@ if has_sprzedawca:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Wykresy — rząd 1: histogram + branże
+# Wykresy — histogram + branże (Plotly)
 # ---------------------------------------------------------------------------
 
 col_left, col_right = st.columns(2)
 
 with col_left:
     st.subheader("Rozkład przewidywanych wartości płatności")
-    fig, ax = plt.subplots(figsize=(7, 4))
     score_min = float(df_out['prediction_score'].min())
     score_max = float(df_out['prediction_score'].max())
-    ax.axvspan(score_min, threshold, alpha=0.08, color='red')
-    ax.hist(df_out['prediction_score'], bins=40, color='steelblue', edgecolor='black', alpha=0.85)
-    ax.axvline(threshold, color='red', linestyle='--', linewidth=2,
-               label=f"Próg ryzyka: {threshold:,} PLN")
-    ax.set_xlabel("Przewidziana wartość płatności (PLN)")
-    ax.set_ylabel("Liczba zamówień")
-    ax.legend()
-    ax.set_xlim(score_min, score_max)
-    st.pyplot(fig)
-    plt.close()
+
+    fig = px.histogram(
+        df_out, x='prediction_score',
+        nbins=40,
+        template='plotly_dark',
+        color_discrete_sequence=['#4F8EF7'],
+        labels={'prediction_score': 'Przewidziana wartość (PLN)', 'count': 'Liczba zamówień'}
+    )
+    fig.add_vrect(
+        x0=score_min, x1=threshold,
+        fillcolor='#E05A5A', opacity=0.08,
+        layer='below', line_width=0
+    )
+    fig.add_vline(
+        x=threshold, line_dash='dash',
+        line_color='#E05A5A', line_width=2,
+        annotation_text=f'Próg: {threshold:,} PLN',
+        annotation_font_color='#E05A5A',
+        annotation_position='top right'
+    )
+    fig.update_layout(
+        plot_bgcolor='#1e2130',
+        paper_bgcolor='#1e2130',
+        font_color='#e8eaf0',
+        margin=dict(l=20, r=20, t=40, b=20),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
     st.caption("Czerwone tło = strefa wysokiego ryzyka (poniżej progu).")
 
 with col_right:
     st.subheader("Udział wysokiego ryzyka wg branży")
     if has_branza:
-        risk_pct = branza_stats['risk_pct'].sort_values()
+        risk_pct_sorted = branza_stats['risk_pct'].sort_values()
         bar_colors = [
-            '#d73027' if v > 50 else '#fc8d59' if v > 30 else '#91bfdb'
-            for v in risk_pct.values
+            '#E05A5A' if v > 50 else '#F59E0B' if v > 30 else '#4F8EF7'
+            for v in risk_pct_sorted.values
         ]
-        fig, ax = plt.subplots(figsize=(7, 4))
-        bars = ax.barh(risk_pct.index, risk_pct.values, color=bar_colors, edgecolor='black')
-        ax.axvline(50, color='gray', linestyle=':', linewidth=1, label='50%')
-        ax.set_xlabel("% zamówień wysokiego ryzyka")
-        ax.set_xlim(0, 105)
-        for bar, val in zip(bars, risk_pct.values):
-            ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height() / 2,
-                    f'{val:.0f}%', va='center', fontsize=9)
-        ax.legend(fontsize=8)
-        st.pyplot(fig)
-        plt.close()
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=risk_pct_sorted.index.tolist(),
+            x=risk_pct_sorted.values.tolist(),
+            orientation='h',
+            marker_color=bar_colors,
+            marker_line_color='rgba(0,0,0,0.3)',
+            marker_line_width=1,
+            text=[f'{v:.0f}%' for v in risk_pct_sorted.values],
+            textposition='outside',
+            textfont_color='#e8eaf0',
+        ))
+        fig.add_vline(x=50, line_dash='dot', line_color='#888', line_width=1)
+        fig.update_layout(
+            template='plotly_dark',
+            plot_bgcolor='#1e2130',
+            paper_bgcolor='#1e2130',
+            font_color='#e8eaf0',
+            margin=dict(l=20, r=60, t=20, b=20),
+            xaxis_title='% zamówień wysokiego ryzyka',
+            xaxis_range=[0, 115],
+            showlegend=False,
+        )
+        st.plotly_chart(fig, use_container_width=True)
         st.caption("Czerwony > 50% · Pomarańczowy > 30% · Niebieski < 30%")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Wykres — ryzyko wg sprzedawcy (stacked bar)
+# Wykres — portfel sprzedawców (stacked bar, Plotly)
 # ---------------------------------------------------------------------------
 
 if has_sprzedawca:
@@ -343,16 +462,39 @@ if has_sprzedawca:
     sp['low_risk'] = sp['total'] - sp['high_risk']
     sp = sp.sort_values('risk_pct', ascending=True)
 
-    fig, ax = plt.subplots(figsize=(10, 3.5))
-    ax.barh(sp.index, sp['low_risk'], color='#91bfdb', edgecolor='black', label='Niskie ryzyko')
-    ax.barh(sp.index, sp['high_risk'], left=sp['low_risk'],
-            color='#d73027', edgecolor='black', label='Wysokie ryzyko')
-    for i, (idx, row) in enumerate(sp.iterrows()):
-        ax.text(row['total'] + 1, i, f"{row['risk_pct']:.0f}%", va='center', fontsize=9, color='#d73027')
-    ax.set_xlabel("Liczba zamówień")
-    ax.legend(loc='lower right')
-    st.pyplot(fig)
-    plt.close()
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=sp.index.tolist(),
+        x=sp['low_risk'].tolist(),
+        name='Niskie ryzyko',
+        orientation='h',
+        marker_color='#4F8EF7',
+        marker_line_color='rgba(0,0,0,0.3)',
+        marker_line_width=1,
+    ))
+    fig.add_trace(go.Bar(
+        y=sp.index.tolist(),
+        x=sp['high_risk'].tolist(),
+        name='Wysokie ryzyko',
+        orientation='h',
+        marker_color='#E05A5A',
+        marker_line_color='rgba(0,0,0,0.3)',
+        marker_line_width=1,
+        text=[f"{v:.0f}%" for v in sp['risk_pct'].values],
+        textposition='outside',
+        textfont_color='#E05A5A',
+    ))
+    fig.update_layout(
+        barmode='stack',
+        template='plotly_dark',
+        plot_bgcolor='#1e2130',
+        paper_bgcolor='#1e2130',
+        font_color='#e8eaf0',
+        margin=dict(l=20, r=60, t=20, b=20),
+        xaxis_title='Liczba zamówień',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    )
+    st.plotly_chart(fig, use_container_width=True)
     st.caption("Wartość % po prawej = udział wysokiego ryzyka w portfelu sprzedawcy.")
 
 st.divider()
@@ -363,7 +505,7 @@ st.divider()
 
 st.subheader("Top 20 zamówień wysokiego ryzyka — wymagają interwencji")
 st.caption(
-    "Posortowane od najwyższej przewidywanej wartości płatności. "
+    "Posortowane od najwyższej przewidywanej wartości. "
     "Im wyższy score przy wysokim ryzyku, tym większy potencjalny wpływ na cashflow."
 )
 
@@ -384,12 +526,18 @@ df_high = (
     .reset_index(drop=True)
 )
 df_high.index += 1
+df_high.insert(0, 'Ryzyko', '🔴 Wysokie')
 
-styled_table = df_high.style.map(
-    lambda _: 'color: #d73027; font-weight: bold',
-    subset=['Predykcja modelu (PLN)']
-).format({'Wartość (PLN)': '{:,.0f}', 'Predykcja modelu (PLN)': '{:,.0f}'})
+def color_rows(row):
+    return ['background-color: #2a1a1a; color: #e8eaf0'] * len(row)
 
+fmt = {}
+if 'Wartość (PLN)' in df_high.columns:
+    fmt['Wartość (PLN)'] = '{:,.0f}'
+if 'Predykcja modelu (PLN)' in df_high.columns:
+    fmt['Predykcja modelu (PLN)'] = '{:,.0f}'
+
+styled_table = df_high.style.apply(color_rows, axis=1).format(fmt)
 st.dataframe(styled_table, use_container_width=True)
 
 st.divider()
@@ -398,7 +546,16 @@ st.divider()
 # SHAP
 # ---------------------------------------------------------------------------
 
-st.subheader("Interpretacja modelu – SHAP")
+st.markdown("""
+<div style='background:#1e2130;border-left:4px solid #4F8EF7;
+            border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;'>
+    <strong style='color:#4F8EF7;'>Model Explainability — SHAP</strong><br>
+    <span style='color:#888;font-size:0.85rem;'>
+    Gradient Boosting · 100 estimators · R²=0.91 · MAE=1 302 PLN
+    </span>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown(
     "**Beeswarm** — każda kropka = jedno zamówienie. "
     "Czerwony = wysoka wartość cechy, niebieski = niska. "
@@ -437,7 +594,7 @@ try:
         st.markdown("**Wyjaśnienie pojedynczej predykcji (Waterfall)**")
         sample_idx = st.slider("Wybierz rekord do analizy", 0, len(X_all) - 1, 0)
         rec = df_out.iloc[sample_idx]
-        risk_label = "Wysokie ryzyko" if rec['prediction_label'] == 0 else "Niskie ryzyko"
+        risk_label = "🔴 Wysokie ryzyko" if rec['prediction_label'] == 0 else "🟢 Niskie ryzyko"
         klient = rec.get('Nazwa klienta', '—')
         st.caption(
             f"Rekord #{sample_idx + 1} · Klient: **{klient}** · "
@@ -488,9 +645,9 @@ co pozwala zrozumieć *dlaczego* model podjął daną decyzję.
 # ---------------------------------------------------------------------------
 
 st.markdown(
-    "<div style='text-align:center;color:gray;font-size:0.82em;padding-top:2rem;'>"
+    "<div style='text-align:center;color:#555;font-size:0.82em;padding-top:2rem;'>"
     "R²=0.91 · MAE=1 302 PLN · Gradient Boosting · scikit-learn Pipeline | "
-    "<a href='https://github.com/webdevanki/-predicting-sales-app' style='color:gray;'>"
+    "<a href='https://github.com/webdevanki/-predicting-sales-app' style='color:#4F8EF7;'>"
     "GitHub</a>"
     "</div>",
     unsafe_allow_html=True,
