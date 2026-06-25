@@ -1,108 +1,82 @@
-# B2B Payment Risk — ML Dashboard
+# B2B Payment Risk Dashboard
 
-End-to-end machine learning project for predicting B2B payment values and classifying payment risk. Built to support sales teams in prioritizing high-risk accounts before payment deadlines.
+Streamlit dashboard wspierający działy sprzedaży B2B w zarządzaniu ryzykiem płatności. Firma sprzedaje na kredyt kupiecki (30 dni). Niektórzy klienci płacą mniej niż wartość faktury — model przewiduje **ile % faktury klient faktycznie zapłaci** i flaguje faktury z ryzykiem niedoboru, zanim minie termin płatności.
 
-## Dashboard
+## Dashboard — app.py
 
-A Streamlit app with four tabs, each targeting a different role:
+### Jak to działa
 
-| Tab | Audience | Content |
-|-----|----------|---------|
-| 🎯 Działania | Sales rep (daily) | Priority-scored action list — who to call and why |
-| 📊 Analiza | Manager | Risk breakdown by industry and salesperson |
-| 📅 Cash flow | Finance | Upcoming payments at risk, 30-day timeline |
-| 🔬 Model | Data science | SHAP explainability, metrics, raw data |
+1. Do modelu trafiają dane faktury: branża klienta, liczba produktów, cena jednostkowa, sprzedawca, miesiąc i kwartał
+2. **GradientBoostingRegressor** (scikit-learn Pipeline) przewiduje `Kwota zapłacona` — ile z faktury faktycznie wpłynie
+3. Wyliczane jest `% pokrycia faktury` = prognoza / wartość faktury
+4. Jeśli prognoza < próg % (domyślnie 85%) → faktura dostaje flagę **ryzyka niedoboru**
+5. Handlowiec widzi listę priorytetową i kontaktuje się z klientem przed terminem
 
-### 🎯 Działania — priority action list
+### Cztery zakładki
+
+| Zakładka | Dla kogo | Zawartość |
+|----------|----------|-----------|
+| 🎯 Działania | Handlowiec (codziennie) | Lista klientów do kontaktu — posortowana wg pilności i wartości |
+| 📊 Analiza | Manager | Ryzyko wg branży i sprzedawcy, rozkład wartości zamówień |
+| 📅 Cash flow | Finance | Harmonogram zagrożonych płatności: przeterminowane 1–30d / 31–90d / >90d + nadchodzące |
+| 🔬 Model | Data science | SHAP beeswarm + waterfall, metryki modelu, surowe dane |
+
+### 🎯 Działania
 
 ![Działania tab](imgs/1.png)
 
-Orders are scored by **Priority Score** (urgency 40% + payment value 40% + client repeat risk 20%) and grouped into three tiers:
+Każde zamówienie wysokiego ryzyka dostaje **Priority Score** = pilność terminu (40%) + wartość zagrożona (40%) + historia klienta (20%).
 
-- 🔴 **Krytyczne** — overdue or high value, act immediately
-- 🟠 **Pilne** — payment due within 7 days
-- 🟡 **Ważne** — payment due within 30 days
+Trzy tiery: 🔴 Krytyczne · 🟠 Pilne · 🟡 Ważne. Zamówienia przeterminowane ponad 90 dni są wykluczone z listy działań (trafiają wyłącznie do bucketu "Cash flow > 90d").
 
-Each card shows the client, industry, responsible salesperson, amount at risk, days to payment deadline, and an auto-generated contact reason.
-
-### 📊 Analiza — risk analysis
+### 📊 Analiza
 
 ![Analiza tab](imgs/2.png)
 
-### 📅 Cash flow — payment timeline
+### 📅 Cash flow
 
 ![Cash flow tab](imgs/3.png)
 
-### 🔬 Model — explainability
+### 🔬 Model
 
 ![Model tab](imgs/4.png)
 
-## Problem Statement
+### Stack — dashboard
 
-In B2B sales, late or missing payments directly impact cash flow. This project predicts the expected payment value per order and classifies orders as **high risk** (predicted value below a configurable PLN threshold) — enabling proactive intervention before payment deadlines.
+| Warstwa | Narzędzia |
+|---------|-----------|
+| ML | scikit-learn — Pipeline, ColumnTransformer, GradientBoostingRegressor |
+| Explainability | SHAP — TreeExplainer, beeswarm, waterfall |
+| Wizualizacja | Plotly, matplotlib |
+| Dashboard | Streamlit |
+| Dane | pandas, numpy |
 
-## ML Approach
-
-1. **EDA** — distribution analysis, missing data audit, correlation heatmap, target variable inspection
-2. **A/B Testing** — statistical group comparison (Mann-Whitney U, Cohen's d, Shapiro-Wilk)
-3. **Feature Engineering** — temporal features from order dates (month, quarter, day of week)
-4. **sklearn Pipeline** — `ColumnTransformer` for parallel preprocessing; prevents data leakage during cross-validation
-5. **Model Selection** — Ridge (baseline), Random Forest, Gradient Boosting via 5-fold CV on MAE and R²
-6. **Evaluation** — hold-out test set, residuals plot, actual vs predicted scatter
-7. **SHAP** — beeswarm and waterfall plots for global and per-prediction explainability
-8. **Experiment Tracking** — MLflow logs parameters, metrics and artifacts
-
-## Results
-
-| Metric | Value |
-|--------|-------|
-| Best model | Gradient Boosting |
-| CV MAE (5-fold) | 1 157.87 PLN |
-| Test MAE | 1 301.65 PLN |
-| Test RMSE | 1 963.11 PLN |
-| Test R² | 0.910 |
-
-## Project Structure
-
-```
-├── predict.ipynb          # ML pipeline: EDA, A/B testing, training, SHAP, MLflow
-├── app.py                 # Streamlit dashboard — priority scoring, SHAP, cash flow
-├── generate_test_data.py  # Generates synthetic dataset for demo purposes
-├── zamowienia_testowe.csv # Sample dataset (150 orders, 9 features)
-├── imgs/                  # Dashboard screenshots
-│   ├── 1.png              # Tab: Działania
-│   ├── 2.png              # Tab: Analiza
-│   ├── 3.png              # Tab: Cash flow
-│   └── 4.png              # Tab: Model
-├── .streamlit/config.toml # Light corporate theme
-├── requirements.txt
-└── README.md
-```
-
-## Quickstart
+### Uruchomienie
 
 ```bash
 pip install -r requirements.txt
-
-# Run dashboard (uses built-in demo data)
 streamlit run app.py
-
-# Or train + explore in notebook
-jupyter notebook predict.ipynb
-
-# View MLflow experiment history
-mlflow ui
 ```
 
-## Tech Stack
+Aplikacja uruchamia się w trybie demo (500 syntetycznych zamówień, 40 klientów, 7 sprzedawców). Można też wgrać własny CSV przez sidebar.
 
-| Layer | Tools |
-|-------|-------|
-| Data processing | pandas, numpy |
-| Statistics | scipy (Mann-Whitney U, Shapiro-Wilk, Cohen's d) |
-| ML | scikit-learn (Pipeline, ColumnTransformer, GradientBoosting) |
-| Explainability | SHAP (TreeExplainer, beeswarm, waterfall) |
-| Experiment tracking | MLflow |
-| Visualization | Plotly, matplotlib |
-| Dashboard | Streamlit |
-| Model persistence | joblib |
+---
+
+## Notebook — predict.ipynb
+
+Osobny artefakt: eksperymenty ML, nie powiązany z dashboardem.
+
+- **EDA** — rozkłady, brakujące dane, korelacje
+- **A/B Testing** — Mann-Whitney U, Cohen's d, Shapiro-Wilk
+- **Feature engineering** — cechy temporalne z dat zamówień
+- **Model selection** — Ridge (baseline), Random Forest, Gradient Boosting, 5-fold CV
+- **Ewaluacja** — zbiór testowy, residuals, actual vs predicted
+- **SHAP** — globalne i per-rekord wyjaśnienia
+- **MLflow** — tracking parametrów, metryk i artefaktów
+
+Wyniki notebooka (R²=0.91, MAE=1 302 PLN, RMSE=1 963 PLN) zostały ręcznie przeniesione do zakładki Model w dashboardzie jako stałe — model w `app.py` trenuje się na danych demo, nie na zbiorze z notebooka.
+
+```bash
+jupyter notebook predict.ipynb
+mlflow ui
+```

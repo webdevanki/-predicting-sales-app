@@ -43,10 +43,11 @@ def generate_demo_data():
         "IT / Technologia", "Budownictwo", "Rolnictwo", "Logistyka", "Medycyna",
         "Retail", "Energia", "Motoryzacja", "Spożywczy", "Edukacja",
     ]
-    branza_mult = {
-        "IT / Technologia": 1.3, "Medycyna": 1.4, "Energia": 1.2,
-        "Budownictwo": 1.1, "Rolnictwo": 0.9, "Logistyka": 1.0,
-        "Retail": 0.95, "Motoryzacja": 1.15, "Spożywczy": 0.85, "Edukacja": 0.8,
+    # Wskaźnik jak dobrze branża płaci faktury (% wartości faktury)
+    branza_payment_rate = {
+        "IT / Technologia": 0.95, "Medycyna": 0.96, "Energia": 0.92,
+        "Budownictwo": 0.74, "Rolnictwo": 0.83, "Logistyka": 0.88,
+        "Retail": 0.76, "Motoryzacja": 0.89, "Spożywczy": 0.81, "Edukacja": 0.91,
     }
 
     # Realistyczny rozkład dat — część historyczna, część bieżąca, część przyszła
@@ -62,20 +63,27 @@ def generate_demo_data():
     liczba_produktow  = np.random.randint(1, 80, n)
     cena_jednostkowa  = np.random.uniform(20, 800, n)
     branza_arr        = np.random.choice(branże, n)
-    mult              = np.array([branza_mult[b] for b in branza_arr])
-    zaplacono         = (liczba_produktow * cena_jednostkowa * mult
-                         + np.random.normal(0, 500, n)).clip(50).round(2)
+
+    # Wartość faktury = cena × ilość (co klient powinien zapłacić)
+    wartosc_faktury = (liczba_produktow * cena_jednostkowa).round(2)
+
+    # Kwota zapłacona = faktyczna płatność klienta (może być niższa niż faktura)
+    base_rate   = np.array([branza_payment_rate[b] for b in branza_arr])
+    client_var  = np.random.normal(0, 0.07, n)   # indywidualne różnice między klientami
+    rate        = (base_rate + client_var).clip(0.30, 1.00)
+    kwota_zaplacona = (wartosc_faktury * rate + np.random.normal(0, 150, n)).clip(50).round(2)
 
     return pd.DataFrame({
-        "ID":                 range(1001, 1001 + n),
-        "Data zamowienia":    daty.strftime("%Y-%m-%d"),
-        "Nazwa klienta":      np.random.choice(klienci, n),
-        "Sprzedawca":         np.random.choice(sprzedawcy, n),
-        "Branża":             branza_arr,
-        "Liczba produktow":   liczba_produktow,
+        "ID":                  range(1001, 1001 + n),
+        "Data zamowienia":     daty.strftime("%Y-%m-%d"),
+        "Nazwa klienta":       np.random.choice(klienci, n),
+        "Sprzedawca":          np.random.choice(sprzedawcy, n),
+        "Branża":              branza_arr,
+        "Liczba produktow":    liczba_produktow,
         "Wartosc jednostkowa": cena_jednostkowa.round(2),
-        "Zapłacono":          zaplacono,
-        "Komentarz":          np.random.choice(["", "Pilne", "Klient VIP", "Reklamacja", ""], n),
+        "Wartość faktury":     wartosc_faktury,
+        "Kwota zapłacona":     kwota_zaplacona,   # target modelu
+        "Komentarz":           np.random.choice(["", "Pilne", "Klient VIP", "Reklamacja", ""], n),
     })
 
 
@@ -97,8 +105,8 @@ def engineer_features(df_raw):
 @st.cache_resource
 def train_model(df_hash, _df):
     df_fe = engineer_features(_df)
-    X     = df_fe.drop(columns=["Zapłacono"])
-    y     = df_fe["Zapłacono"]
+    X     = df_fe.drop(columns=["Kwota zapłacona"])
+    y     = df_fe["Kwota zapłacona"]
     num_cols = X.select_dtypes(include="number").columns.tolist()
     cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
     pre = ColumnTransformer([
@@ -164,7 +172,7 @@ def get_contact_reason(row, client_counts, branza_stats, has_branza):
 
 
 def action_card(rank, icon, label, color, bg,
-                client, industry, salesperson, value, days, reason):
+                client, industry, salesperson, value, days, reason, pct=0):
     if days < 0:
         days_txt   = f"Przeterminowane ({abs(int(days))} dni)"
         days_color = "#C50F1F"
@@ -180,6 +188,8 @@ def action_card(rank, icon, label, color, bg,
     else:
         days_txt   = f"Termin: za {int(days)} dni"
         days_color = "#6B7A99"
+
+    pct_color = "#C50F1F" if pct < 70 else "#E8792A" if pct < 85 else "#D4A017"
 
     return f"""
 <div style='display:flex; align-items:stretch; background:#FFFFFF;
@@ -204,9 +214,14 @@ def action_card(rank, icon, label, color, bg,
       </div>
       <div style='color:#8896A8; font-size:0.76rem;'>⚠&thinsp; {reason}</div>
     </div>
-    <div style='text-align:right; flex-shrink:0; min-width:110px;'>
-      <div style='color:#C50F1F; font-size:1.2rem; font-weight:700; line-height:1; margin-bottom:4px;'>
+    <div style='text-align:right; flex-shrink:0; min-width:130px;'>
+      <div style='color:#8896A8; font-size:0.6rem; text-transform:uppercase;
+                  letter-spacing:0.05em; margin-bottom:2px;'>Szac. niedobór</div>
+      <div style='color:#C50F1F; font-size:1.15rem; font-weight:700; line-height:1; margin-bottom:3px;'>
         {value:,.0f}&thinsp;PLN
+      </div>
+      <div style='color:{pct_color}; font-size:0.72rem; font-weight:600; margin-bottom:3px;'>
+        {pct:.0f}% pokrycia faktury
       </div>
       <div style='color:{days_color}; font-size:0.74rem; font-weight:600;'>{days_txt}</div>
     </div>
@@ -283,15 +298,16 @@ with st.sidebar:
     mode = st.radio("", ["Dane demo", "Wgraj własny CSV"], label_visibility="collapsed")
     st.divider()
 
-    st.markdown("**Próg ryzyka**")
+    st.markdown("**Próg pokrycia faktury**")
     st.caption(
-        "Zamówienia, których **predykcja płatności** spada poniżej progu, "
-        "uznajemy za ryzykowne — klient prawdopodobnie zapłaci mniej lub z opóźnieniem."
+        "Jeśli model przewiduje, że klient zapłaci **mniej niż X% wartości faktury** — "
+        "faktura trafia na listę ryzyka."
     )
-    threshold = st.slider(
-        "", min_value=1_000, max_value=50_000, value=8_000, step=500,
-        format="%d PLN", label_visibility="collapsed",
+    threshold_pct = st.slider(
+        "", min_value=50, max_value=95, value=85, step=1,
+        format="%d%%", label_visibility="collapsed",
     )
+    st.caption("Np. 85% → klient z fakturą 10 000 PLN musi zapłacić min. 8 500 PLN")
 
 # ─────────────────────────────────────────────────────── Wczytaj dane ──────
 
@@ -317,7 +333,21 @@ with st.spinner("Trenuję model predykcyjny…"):
 scores    = pipeline.predict(X_all)
 df_out    = df_raw.copy()
 df_out["prediction_score"] = scores.round(2)
-df_out["prediction_label"] = (scores >= threshold).astype(int)
+
+# % pokrycia faktury: ile z wartości faktury model spodziewa się że wpłynie
+if "Wartość faktury" in df_out.columns:
+    df_out["pct_pokrycia"] = (scores / df_out["Wartość faktury"].clip(lower=1) * 100).round(1)
+else:
+    df_out["pct_pokrycia"] = 100.0
+
+# Ryzyko: klient zapłaci mniej niż threshold_pct% wartości swojej faktury
+df_out["prediction_label"] = (df_out["pct_pokrycia"] >= threshold_pct).astype(int)
+
+# Kwota niedoboru = to czego faktycznie może zabraknąć
+if "Wartość faktury" in df_out.columns:
+    df_out["kwota_niedoboru"] = (df_out["Wartość faktury"] - df_out["prediction_score"]).clip(lower=0).round(2)
+else:
+    df_out["kwota_niedoboru"] = 0.0
 
 has_branza    = "Branża" in df_out.columns
 has_sprzedawca = "Sprzedawca" in df_out.columns
@@ -347,10 +377,10 @@ if has_sprzedawca:
 
 # Globalne KPI
 total        = len(df_out)
-n_high       = int((df_out["prediction_label"] == 0).sum())
-n_low        = int((df_out["prediction_label"] == 1).sum())
-value_at_risk = float(df_out.loc[df_out["prediction_label"] == 0, "prediction_score"].sum())
-median_order = float(df_out["prediction_score"].median())
+n_high        = int((df_out["prediction_label"] == 0).sum())
+n_low         = int((df_out["prediction_label"] == 1).sum())
+value_at_risk = float(df_out.loc[df_out["prediction_label"] == 0, "kwota_niedoboru"].sum())
+median_pct    = float(df_out["pct_pokrycia"].median())
 
 # ─────────────────────────────── Sidebar: feedback progu ──────────
 
@@ -360,12 +390,12 @@ with st.sidebar:
 <div style='background:#F4F6F9; border:1px solid #E0E4EA; border-radius:6px;
             padding:10px 12px; margin-top:4px; font-size:0.8rem; line-height:1.9;'>
   <div><span style='color:#C50F1F; font-weight:700;'>● {n_high}</span>
-  &nbsp;zamówień wysokiego ryzyka
+  &nbsp;faktur z ryzykiem niedoboru
   <span style='color:#8896A8;'>({n_high/total*100:.0f}%)</span></div>
   <div><span style='color:#E8792A; font-weight:700;'>
-    {value_at_risk:,.0f} PLN</span>&nbsp;zagrożone</div>
+    {value_at_risk:,.0f} PLN</span>&nbsp;może nie wpłynąć</div>
   <div style='color:#8896A8; margin-top:2px; font-size:0.74rem;'>
-    Mediana portfela: <strong>{median_order:,.0f} PLN</strong></div>
+    Mediana pokrycia: <strong>{median_pct:.0f}%</strong> wartości faktury</div>
 </div>""",
         unsafe_allow_html=True,
     )
@@ -378,20 +408,58 @@ with st.sidebar:
 
 # ──────────────────────────────────────────────────────── Tytuł ──────
 
-st.title("Predykcja płatności klientów B2B")
-st.markdown(
-    "Model **Gradient Boosting** szacuje wartość płatności per zamówienie. "
-    "Zamówienia poniżej ustawionego progu PLN są flagowane jako **wysokie ryzyko** "
-    "— do priorytetowego kontaktu przez dział sprzedaży."
-)
+st.title("Ryzyko niezapłaconych faktur B2B")
+
+_step_style = ("background:#FFFFFF; border:1px solid #E8ECF0; border-radius:6px; "
+               "padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05); "
+               "min-height:130px;")
+
+s1, s2, s3 = st.columns(3)
+s1.markdown(f"""
+<div style='{_step_style}'>
+  <div style='font-size:1.3rem; margin-bottom:8px;'>📄</div>
+  <div style='font-weight:700; color:#1B2A4A; font-size:0.88rem; margin-bottom:5px;'>
+    Problem</div>
+  <div style='color:#6B7A99; font-size:0.8rem; line-height:1.5;'>
+    Wystawiasz fakturę z terminem 30 dni.
+    Część klientów zapłaci mniej lub z opóźnieniem —
+    <strong>nie wiesz którzy, dopóki termin nie minie</strong>.
+  </div>
+</div>""", unsafe_allow_html=True)
+
+s2.markdown(f"""
+<div style='{_step_style}'>
+  <div style='font-size:1.3rem; margin-bottom:8px;'>🤖</div>
+  <div style='font-weight:700; color:#1B2A4A; font-size:0.88rem; margin-bottom:5px;'>
+    Rozwiązanie</div>
+  <div style='color:#6B7A99; font-size:0.8rem; line-height:1.5;'>
+    System analizuje historię płatności klientów
+    i wskazuje faktury, które <strong>mogą nie wpłynąć
+    w pełnej kwocie</strong> — jeszcze przed terminem.
+  </div>
+</div>""", unsafe_allow_html=True)
+
+s3.markdown(f"""
+<div style='{_step_style}'>
+  <div style='font-size:1.3rem; margin-bottom:8px;'>📞</div>
+  <div style='font-weight:700; color:#1B2A4A; font-size:0.88rem; margin-bottom:5px;'>
+    Działanie</div>
+  <div style='color:#6B7A99; font-size:0.8rem; line-height:1.5;'>
+    Handlowiec dostaje listę klientów do zadzwonienia.
+    <strong>Jeden telefon przed terminem</strong> często
+    wystarczy — zamiast windykacji tygodnie później.
+  </div>
+</div>""", unsafe_allow_html=True)
+
+st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────── KPI ──────
 
 k1, k2, k3, k4 = st.columns(4)
-k1.markdown(kpi_card("#0065BD", "Wszystkie zamówienia",   str(total),              f"po wyczyszczeniu danych"), unsafe_allow_html=True)
-k2.markdown(kpi_card("#107C10", "Niskie ryzyko",          f"{n_low/total*100:.1f}%",  f"{n_low} zamówień ≥ {threshold:,} PLN"), unsafe_allow_html=True)
-k3.markdown(kpi_card("#C50F1F", "Wysokie ryzyko",         f"{n_high/total*100:.1f}%", f"{n_high} zamówień < {threshold:,} PLN"), unsafe_allow_html=True)
-k4.markdown(kpi_card("#E8792A", "Wartość zagrożona",      f"{value_at_risk/1000:.0f}k",  "PLN łącznie"), unsafe_allow_html=True)
+k1.markdown(kpi_card("#0065BD", "Faktur w portfelu",       str(total),                    "wystawionych klientom B2B"), unsafe_allow_html=True)
+k2.markdown(kpi_card("#107C10", "Zapłacą w pełni",    f"{n_low/total*100:.1f}%",  f"prognoza ≥ {threshold_pct}% wartości faktury"), unsafe_allow_html=True)
+k3.markdown(kpi_card("#C50F1F", "Ryzyko niedoboru",   f"{n_high/total*100:.1f}%", f"prognoza < {threshold_pct}% wartości faktury"), unsafe_allow_html=True)
+k4.markdown(kpi_card("#E8792A", "Szacowany niedobór",     f"{value_at_risk/1000:.0f}k",  "PLN może nie wpłynąć"), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
 
@@ -433,11 +501,16 @@ df_hr["priority_score"] = (
 )
 df_hr = df_hr.sort_values("priority_score", ascending=False).reset_index(drop=True)
 
-# Buckety cash flow
-overdue     = df_hr[df_hr["dni_do_terminu"] < 0]
-this_week   = df_hr[df_hr["dni_do_terminu"].between(0, 7)]
-next_2weeks = df_hr[df_hr["dni_do_terminu"].between(8, 14)]
-this_month  = df_hr[df_hr["dni_do_terminu"].between(15, 30)]
+# Buckety cash flow — przeterminowane rozbite na 3 przedziały
+overdue_fresh  = df_hr[df_hr["dni_do_terminu"].between(-30, -1)]   # 1–30 dni po terminie
+overdue_medium = df_hr[df_hr["dni_do_terminu"].between(-90, -31)]  # 31–90 dni po terminie
+overdue_old    = df_hr[df_hr["dni_do_terminu"] < -90]              # >90 dni — stare długi
+this_week      = df_hr[df_hr["dni_do_terminu"].between(0, 7)]
+next_2weeks    = df_hr[df_hr["dni_do_terminu"].between(8, 14)]
+this_month     = df_hr[df_hr["dni_do_terminu"].between(15, 30)]
+
+# Tab Działania: pomijamy zamówienia przeterminowane >90 dni
+df_hr_active = df_hr[df_hr["dni_do_terminu"] >= -90].reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────── TABY ──────
 
@@ -451,40 +524,42 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ═══════════════════════════════════════════════════════ TAB 1 ══════
 with tab1:
 
-    # Banner z potencjałem odzysku
-    top5_val = df_hr.head(5)["prediction_score"].sum()
-    top10_val = df_hr.head(10)["prediction_score"].sum()
+    # Nagłówek + podsumowanie akcji
+    n_active    = len(df_hr_active)
+    top5_val    = df_hr_active.head(5)["kwota_niedoboru"].sum()
+    n_this_week = len(df_hr_active[df_hr_active["dni_do_terminu"].between(0, 7)])
+
     st.markdown(f"""
-<div style='background:linear-gradient(135deg,#0065BD 0%,#0052A3 100%);
-            border-radius:8px; padding:18px 24px; margin-bottom:20px; color:#FFFFFF;
-            display:flex; justify-content:space-between; align-items:center; gap:16px;'>
-  <div>
-    <div style='font-size:0.7rem; font-weight:700; text-transform:uppercase;
-                letter-spacing:0.1em; opacity:0.7; margin-bottom:4px;'>
-      Potencjał odzysku cashflow
-    </div>
-    <div style='font-size:1.4rem; font-weight:700; line-height:1.2;'>
-      Kontaktując top 5 klientów możesz zabezpieczyć
-      <span style='color:#FFD700;'>&nbsp;{top5_val:,.0f} PLN</span>
-    </div>
-    <div style='font-size:0.8rem; opacity:0.75; margin-top:4px;'>
-      Top 10 klientów → do <strong>{top10_val:,.0f} PLN</strong> &nbsp;·&nbsp;
-      {n_high} zamówień wymaga uwagi
-    </div>
+<div style='background:#FFFFFF; border:1px solid #E8ECF0; border-radius:8px;
+            padding:18px 24px; margin-bottom:20px;
+            border-left:4px solid #C50F1F;
+            box-shadow:0 1px 4px rgba(0,0,0,0.06);'>
+  <div style='font-size:1rem; font-weight:700; color:#1B2A4A; margin-bottom:10px;'>
+    Klienci z niezapłaconymi lub ryzykownymi fakturami — skontaktuj się zanim minie termin płatności
   </div>
-  <div style='text-align:right; flex-shrink:0;'>
-    <div style='font-size:2rem; font-weight:800; color:#FFD700; line-height:1;'>
-      {n_high}
+  <div style='display:flex; gap:28px; flex-wrap:wrap;'>
+    <div>
+      <span style='font-size:1.5rem; font-weight:800; color:#C50F1F;'>{n_active}</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>faktur do obsługi</span>
     </div>
-    <div style='font-size:0.72rem; opacity:0.7; text-transform:uppercase;'>klientów</div>
+    <div>
+      <span style='font-size:1.5rem; font-weight:800; color:#E8792A;'>{n_this_week}</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>terminów w tym tygodniu</span>
+    </div>
+    <div>
+      <span style='font-size:1.5rem; font-weight:800; color:#0065BD;'>{top5_val:,.0f} PLN</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>PLN szacowany niedobór top 5</span>
+    </div>
   </div>
 </div>""", unsafe_allow_html=True)
 
-    # Grupuj po tierach
+    section_header("Lista klientów do kontaktu — posortowana od najpilniejszego")
+
+    # Grupuj po tierach — tylko aktywne zamówienia (≤90 dni przeterminowania)
     tiers = [
-        ("🔴", "Krytyczne",  "#C50F1F", "#FFF0F0", df_hr[df_hr["priority_score"] >= 70]),
-        ("🟠", "Pilne",      "#E8792A", "#FFF5EE", df_hr[(df_hr["priority_score"] >= 45) & (df_hr["priority_score"] < 70)]),
-        ("🟡", "Ważne",      "#D4A017", "#FFFDE8", df_hr[df_hr["priority_score"] < 45]),
+        ("🔴", "Krytyczne",  "#C50F1F", "#FFF0F0", df_hr_active[df_hr_active["priority_score"] >= 70]),
+        ("🟠", "Pilne",      "#E8792A", "#FFF5EE", df_hr_active[(df_hr_active["priority_score"] >= 45) & (df_hr_active["priority_score"] < 70)]),
+        ("🟡", "Ważne",      "#D4A017", "#FFFDE8", df_hr_active[df_hr_active["priority_score"] < 45]),
     ]
 
     global_rank = 0
@@ -498,7 +573,7 @@ with tab1:
             f"<span style='font-weight:700; color:{color}; font-size:0.9rem; "
             f"text-transform:uppercase; letter-spacing:0.06em;'>{label}</span>"
             f"<span style='color:#8896A8; font-size:0.8rem;'>· {len(subset)} zamówień"
-            f" · {subset['prediction_score'].sum():,.0f} PLN zagrożone</span>"
+            f" · {subset['kwota_niedoboru'].sum():,.0f} PLN szacowany niedobór</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -515,9 +590,10 @@ with tab1:
                 client     = row.get("Nazwa klienta", "—"),
                 industry   = row.get("Branża", "—"),
                 salesperson= row.get("Sprzedawca", "—"),
-                value      = row["prediction_score"],
+                value      = row["kwota_niedoboru"],
                 days       = int(row["dni_do_terminu"]),
                 reason     = row["reason"],
+                pct        = row["pct_pokrycia"],
             ), unsafe_allow_html=True)
 
         remaining = len(subset) - show_n
@@ -534,9 +610,10 @@ with tab1:
                         client     = row.get("Nazwa klienta", "—"),
                         industry   = row.get("Branża", "—"),
                         salesperson= row.get("Sprzedawca", "—"),
-                        value      = row["prediction_score"],
+                        value      = row["kwota_niedoboru"],
                         days       = int(row["dni_do_terminu"]),
                         reason     = row["reason"],
+                        pct        = row["pct_pokrycia"],
                     ), unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════ TAB 2 ══════
@@ -578,28 +655,28 @@ with tab2:
     # Wykresy
     section_header("Rozkład wartości zamówień")
     fig = px.histogram(
-        df_out, x="prediction_score", nbins=40,
+        df_out, x="pct_pokrycia", nbins=40,
         template="plotly_white",
         color_discrete_sequence=["#0065BD"],
-        labels={"prediction_score": "Przewidziana wartość (PLN)", "count": "Liczba zamówień"},
+        labels={"pct_pokrycia": "Prognozowane pokrycie faktury (%)", "count": "Liczba faktur"},
     )
     fig.add_vrect(
-        x0=float(df_out["prediction_score"].min()), x1=threshold,
+        x0=0, x1=threshold_pct,
         fillcolor="#C50F1F", opacity=0.06, layer="below", line_width=0,
     )
     fig.add_vline(
-        x=threshold, line_dash="dash", line_color="#C50F1F", line_width=2,
-        annotation_text=f"Próg: {threshold:,} PLN",
+        x=threshold_pct, line_dash="dash", line_color="#C50F1F", line_width=2,
+        annotation_text=f"Próg: {threshold_pct}%",
         annotation_font_color="#C50F1F", annotation_position="top right",
     )
     fig.update_layout(
         **_chart_base,
-        xaxis=dict(title="Przewidziana wartość (PLN)", **_ax),
-        yaxis=dict(title="Liczba zamówień", **_ax),
+        xaxis=dict(title="Prognozowane pokrycie faktury (%)", ticksuffix="%", **_ax),
+        yaxis=dict(title="Liczba faktur", **_ax),
         margin=dict(l=20, r=20, t=20, b=20),
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Czerwone tło = strefa wysokiego ryzyka. Każdy słupek = zakres wartości PLN.")
+    st.caption(f"Czerwone tło = strefa ryzyka (< {threshold_pct}%). Każdy słupek = zakres % pokrycia faktury.")
 
     col_l, col_r = st.columns(2)
 
@@ -668,28 +745,44 @@ with tab3:
 
     section_header("Zagrożone płatności wg terminu")
 
-    cf_buckets = [
-        ("🚨", "Przeterminowane",    overdue,     "#C50F1F"),
-        ("⚡", "Ten tydzień (0–7d)", this_week,   "#E8792A"),
-        ("⏰", "8–14 dni",           next_2weeks, "#F59E0B"),
-        ("📅", "15–30 dni",          this_month,  "#0065BD"),
-    ]
-    c1, c2, c3, c4 = st.columns(4)
-    for col, (icon, lbl, data, clr) in zip([c1, c2, c3, c4], cf_buckets):
-        val = data["prediction_score"].sum()
+    def _cf_card(col, icon, lbl, data, clr, muted=False):
+        val = data["kwota_niedoboru"].sum()
         cnt = len(data)
+        opacity = "opacity:0.55;" if muted else ""
         col.markdown(f"""
 <div style='background:#FFFFFF; border:1px solid #E8ECF0; border-top:3px solid {clr};
-            border-radius:6px; padding:16px; text-align:center;
-            box-shadow:0 1px 4px rgba(0,0,0,0.06);'>
-  <div style='font-size:1.5rem; margin-bottom:6px;'>{icon}</div>
-  <div style='color:#8896A8; font-size:0.67rem; font-weight:700;
-              text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;'>
+            border-radius:6px; padding:14px; text-align:center;
+            box-shadow:0 1px 4px rgba(0,0,0,0.06); {opacity}'>
+  <div style='font-size:1.3rem; margin-bottom:5px;'>{icon}</div>
+  <div style='color:#8896A8; font-size:0.62rem; font-weight:700;
+              text-transform:uppercase; letter-spacing:0.07em; margin-bottom:7px;'>
     {lbl}</div>
-  <div style='color:{clr}; font-size:1.55rem; font-weight:700; line-height:1; margin-bottom:3px;'>
+  <div style='color:{clr}; font-size:1.4rem; font-weight:700; line-height:1; margin-bottom:3px;'>
     {val/1000:.0f}k</div>
-  <div style='color:#8896A8; font-size:0.74rem;'>PLN · {cnt} zamówień</div>
+  <div style='color:#8896A8; font-size:0.72rem;'>PLN niedoboru · {cnt} faktur</div>
 </div>""", unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='color:#8896A8; font-size:0.75rem; font-weight:600; "
+        "text-transform:uppercase; letter-spacing:0.07em; margin-bottom:6px;'>"
+        "Przeterminowane</div>",
+        unsafe_allow_html=True,
+    )
+    o1, o2, o3 = st.columns(3)
+    _cf_card(o1, "🚨", "1–30 dni po terminie",  overdue_fresh,  "#C50F1F")
+    _cf_card(o2, "⚠️", "31–90 dni po terminie", overdue_medium, "#E8792A")
+    _cf_card(o3, "📁", "Powyżej 90 dni",         overdue_old,    "#8896A8", muted=True)
+
+    st.markdown(
+        "<div style='color:#8896A8; font-size:0.75rem; font-weight:600; "
+        "text-transform:uppercase; letter-spacing:0.07em; margin:14px 0 6px;'>"
+        "Nadchodzące terminy</div>",
+        unsafe_allow_html=True,
+    )
+    u1, u2, u3 = st.columns(3)
+    _cf_card(u1, "⚡", "Ten tydzień (0–7d)", this_week,   "#E8792A")
+    _cf_card(u2, "⏰", "8–14 dni",           next_2weeks, "#F59E0B")
+    _cf_card(u3, "📅", "15–30 dni",          this_month,  "#0065BD")
 
     st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
     section_header("Trend % ryzyka w czasie")
@@ -752,7 +845,7 @@ with tab3:
 
     col_map = {
         "Nazwa klienta": "Klient", "Sprzedawca": "Sprzedawca", "Branża": "Branża",
-        "Data zamowienia": "Data", "Zapłacono": "Wartość (PLN)",
+        "Data zamowienia": "Data", "Wartość faktury": "Wartość faktury (PLN)", "Kwota zapłacona": "Kwota zapłacona (PLN)",
         "prediction_score": "Predykcja (PLN)",
     }
 
