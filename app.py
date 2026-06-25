@@ -21,7 +21,7 @@ def generate_demo_data():
     np.random.seed(42)
     n = 500
 
-    klienci = [
+    clients = [
         "Kowalski Sp. z o.o.", "Nowak Trading", "TechVision S.A.", "BudMat Polska",
         "AgriPol Sp. z o.o.", "LogiTrans", "MedSupply", "RetailPro S.A.",
         "GreenEnergy Sp. z o.o.", "AutoParts Polska", "FoodDist S.A.", "PrintMaster",
@@ -35,54 +35,69 @@ def generate_demo_data():
         "OmniRetail S.A.", "BioFarm Polska", "SafeGuard Sp. z o.o.",
         "MaxiLog S.A.", "NovaMed Sp. z o.o.", "PrimeTech S.A.",
     ]
-    sprzedawcy = [
+    salespeople = [
         "Anna Wiśniewska", "Piotr Kowalczyk", "Marta Jabłońska",
         "Tomasz Nowak", "Katarzyna Wróbel", "Michał Zając", "Joanna Kowalska",
     ]
-    branże = [
+    industries = [
         "IT / Technologia", "Budownictwo", "Rolnictwo", "Logistyka", "Medycyna",
         "Retail", "Energia", "Motoryzacja", "Spożywczy", "Edukacja",
     ]
-    # Wskaźnik jak dobrze branża płaci faktury (% wartości faktury)
-    branza_payment_rate = {
-        "IT / Technologia": 0.95, "Medycyna": 0.96, "Energia": 0.92,
-        "Budownictwo": 0.74, "Rolnictwo": 0.83, "Logistyka": 0.88,
-        "Retail": 0.76, "Motoryzacja": 0.89, "Spożywczy": 0.81, "Edukacja": 0.91,
+    # Share of clients with chronic underpayment per industry
+    p_bad_industry = {
+        "IT / Technologia": 0.08, "Medycyna": 0.06, "Energia": 0.11,
+        "Budownictwo": 0.32, "Rolnictwo": 0.18, "Logistyka": 0.14,
+        "Retail": 0.26, "Motoryzacja": 0.13, "Spożywczy": 0.18, "Edukacja": 0.09,
     }
 
-    # Realistyczny rozkład dat — część historyczna, część bieżąca, część przyszła
-    dates_hist   = pd.date_range("2023-01-01", "2025-12-31", periods=300)
-    dates_active = pd.date_range("2026-01-01", "2026-05-25", periods=100)
-    dates_now    = pd.date_range("2026-05-26", "2026-06-20", periods=60)
-    dates_future = pd.date_range("2026-06-26", "2026-08-31", periods=40)
-    all_dates    = np.concatenate([dates_hist.values, dates_active.values,
-                                   dates_now.values, dates_future.values])
-    idx  = np.random.permutation(n)
-    daty = pd.DatetimeIndex(all_dates[idx])
+    # Date distribution: 200 historical (model training) + 300 current/future
+    dates_hist     = pd.date_range("2023-01-01", "2025-12-31", periods=200)
+    dates_recent   = pd.date_range("2026-01-01", "2026-05-25", periods=50)
+    dates_upcoming = pd.date_range("2026-05-26", "2026-06-25", periods=150)
+    dates_future   = pd.date_range("2026-06-26", "2026-08-31", periods=100)
+    all_dates  = np.concatenate([dates_hist.values, dates_recent.values,
+                                 dates_upcoming.values, dates_future.values])
+    dates_arr  = pd.DatetimeIndex(all_dates[np.random.permutation(n)])
 
-    liczba_produktow  = np.random.randint(1, 80, n)
-    cena_jednostkowa  = np.random.uniform(20, 800, n)
-    branza_arr        = np.random.choice(branże, n)
+    # Each client belongs to exactly one industry (deterministic to avoid same client
+    # appearing as both "PrimeTech (Retail)" and "PrimeTech (IT)" on different orders)
+    client_industry = {c: industries[i % len(industries)] for i, c in enumerate(clients)}
 
-    # Wartość faktury = cena × ilość (co klient powinien zapłacić)
-    wartosc_faktury = (liczba_produktow * cena_jednostkowa).round(2)
+    # Payment profile is a CLIENT trait, not per-order:
+    # good payer (~98% of invoice) vs problematic (~65%) — consistent across all their orders
+    n_clients  = len(clients)
+    _rate_bad  = np.random.normal(0.65, 0.10, n_clients).clip(0.28, 0.84)
+    _rate_good = np.random.normal(0.98, 0.015, n_clients).clip(0.91, 1.00)
+    client_is_bad = {
+        c: np.random.binomial(1, p_bad_industry[client_industry[c]]) == 1
+        for c in clients
+    }
+    client_rate = {
+        c: float(_rate_bad[i]) if client_is_bad[c] else float(_rate_good[i])
+        for i, c in enumerate(clients)
+    }
 
-    # Kwota zapłacona = faktyczna płatność klienta (może być niższa niż faktura)
-    base_rate   = np.array([branza_payment_rate[b] for b in branza_arr])
-    client_var  = np.random.normal(0, 0.07, n)   # indywidualne różnice między klientami
-    rate        = (base_rate + client_var).clip(0.30, 1.00)
-    kwota_zaplacona = (wartosc_faktury * rate + np.random.normal(0, 150, n)).clip(50).round(2)
+    num_products  = np.random.randint(1, 80, n)
+    unit_price    = np.random.uniform(20, 800, n)
+    client_arr    = np.random.choice(clients, n)
+    industry_arr  = np.array([client_industry[c] for c in client_arr])
+    invoice_value = (num_products * unit_price).round(2)
+
+    # Amount paid: client base rate + small per-order noise (±2%)
+    rate       = np.array([client_rate[c] for c in client_arr])
+    rate       = (rate + np.random.normal(0, 0.02, n)).clip(0.20, 1.00)
+    amount_paid = (invoice_value * rate).round(2).clip(50)
 
     return pd.DataFrame({
         "ID":                  range(1001, 1001 + n),
-        "Data zamowienia":     daty.strftime("%Y-%m-%d"),
-        "Nazwa klienta":       np.random.choice(klienci, n),
-        "Sprzedawca":          np.random.choice(sprzedawcy, n),
-        "Branża":              branza_arr,
-        "Liczba produktow":    liczba_produktow,
-        "Wartosc jednostkowa": cena_jednostkowa.round(2),
-        "Wartość faktury":     wartosc_faktury,
-        "Kwota zapłacona":     kwota_zaplacona,   # target modelu
+        "Data zamowienia":     dates_arr.strftime("%Y-%m-%d"),
+        "Nazwa klienta":       client_arr,
+        "Sprzedawca":          np.random.choice(salespeople, n),
+        "Branża":              industry_arr,
+        "Liczba produktow":    num_products,
+        "Wartosc jednostkowa": unit_price.round(2),
+        "Wartość faktury":     invoice_value,
+        "Kwota zapłacona":     amount_paid,
         "Komentarz":           np.random.choice(["", "Pilne", "Klient VIP", "Reklamacja", ""], n),
     })
 
@@ -143,28 +158,31 @@ def priority_tier(score):
     return       "🟡", "Ważne",    "#D4A017", "#FFFDE8"
 
 
-def get_contact_reason(row, client_counts, branza_stats, has_branza):
+def get_contact_reason(row, client_counts, industry_stats, has_industry):
     reasons = []
     days    = row.get("dni_do_terminu", 999)
 
     if days < -14:
         reasons.append(f"przeterminowane {abs(int(days))} dni")
     elif days < 0:
-        reasons.append(f"termin minął {abs(int(days))} dni temu")
+        d = abs(int(days))
+        reasons.append(f"termin minął {d} {'dzień' if d == 1 else 'dni'} temu")
     elif days <= 3:
         reasons.append(f"termin płatności za {int(days)} {'dzień' if int(days)==1 else 'dni'}")
     elif days <= 7:
         reasons.append(f"termin za {int(days)} dni")
 
     count = int(client_counts.get(row.get("Nazwa klienta", ""), 0))
-    if count > 3:
+    counts_vals = list(client_counts.values())
+    repeat_threshold = max(3, int(np.median(counts_vals) * 1.5)) if counts_vals else 3
+    if count >= repeat_threshold:
         reasons.append(f"powtarzający się klient ryzyka ({count}×)")
-    elif count > 1:
+    elif count > 2:
         reasons.append(f"{count} zamówień poniżej progu")
 
-    if has_branza and branza_stats is not None:
+    if has_industry and industry_stats is not None:
         b    = row.get("Branża", "")
-        rpct = branza_stats["risk_pct"].get(b, 0)
+        rpct = industry_stats["risk_pct"].get(b, 0)
         if rpct > 65:
             reasons.append(f"branża wysokiego ryzyka ({rpct:.0f}%)")
 
@@ -221,7 +239,7 @@ def action_card(rank, icon, label, color, bg,
         {value:,.0f}&thinsp;PLN
       </div>
       <div style='color:{pct_color}; font-size:0.72rem; font-weight:600; margin-bottom:3px;'>
-        {pct:.0f}% pokrycia faktury
+        zapłaci ok. {pct:.0f}% faktury
       </div>
       <div style='color:{days_color}; font-size:0.74rem; font-weight:600;'>{days_txt}</div>
     </div>
@@ -336,7 +354,7 @@ df_out["prediction_score"] = scores.round(2)
 
 # % pokrycia faktury: ile z wartości faktury model spodziewa się że wpłynie
 if "Wartość faktury" in df_out.columns:
-    df_out["pct_pokrycia"] = (scores / df_out["Wartość faktury"].clip(lower=1) * 100).round(1)
+    df_out["pct_pokrycia"] = (scores / df_out["Wartość faktury"].clip(lower=1) * 100).clip(upper=100).round(1)
 else:
     df_out["pct_pokrycia"] = 100.0
 
@@ -349,31 +367,31 @@ if "Wartość faktury" in df_out.columns:
 else:
     df_out["kwota_niedoboru"] = 0.0
 
-has_branza    = "Branża" in df_out.columns
-has_sprzedawca = "Sprzedawca" in df_out.columns
-has_dates     = "Data zamowienia" in df_out.columns
+has_industry    = "Branża" in df_out.columns
+has_salesperson = "Sprzedawca" in df_out.columns
+has_order_date     = "Data zamowienia" in df_out.columns
 
 # Statystyki branżowe
-if has_branza:
-    branza_stats = df_out.groupby("Branża").agg(
+if has_industry:
+    industry_stats = df_out.groupby("Branża").agg(
         total=("prediction_label", "count"),
         high_risk=("prediction_label", lambda x: (x == 0).sum()),
     )
-    branza_stats["risk_pct"] = branza_stats["high_risk"] / branza_stats["total"] * 100
-    worst_branza = branza_stats["risk_pct"].idxmax()
-    best_branza  = branza_stats["risk_pct"].idxmin()
+    industry_stats["risk_pct"] = industry_stats["high_risk"] / industry_stats["total"] * 100
+    worst_industry = industry_stats["risk_pct"].idxmax()
+    best_industry  = industry_stats["risk_pct"].idxmin()
 else:
-    branza_stats = None
+    industry_stats = None
 
 # Statystyki sprzedawców
-if has_sprzedawca:
-    sp_stats = df_out.groupby("Sprzedawca").agg(
+if has_salesperson:
+    salesperson_stats = df_out.groupby("Sprzedawca").agg(
         total=("prediction_label", "count"),
         high_risk=("prediction_label", lambda x: (x == 0).sum()),
     )
-    sp_stats["risk_pct"]  = sp_stats["high_risk"] / sp_stats["total"] * 100
-    sp_stats["low_risk"]  = sp_stats["total"] - sp_stats["high_risk"]
-    worst_sprzedawca = sp_stats["risk_pct"].idxmax()
+    salesperson_stats["risk_pct"]  = salesperson_stats["high_risk"] / salesperson_stats["total"] * 100
+    salesperson_stats["low_risk"]  = salesperson_stats["total"] - salesperson_stats["high_risk"]
+    worst_salesperson = salesperson_stats["risk_pct"].idxmax()
 
 # Globalne KPI
 total        = len(df_out)
@@ -457,8 +475,8 @@ st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
 
 k1, k2, k3, k4 = st.columns(4)
 k1.markdown(kpi_card("#0065BD", "Faktur w portfelu",       str(total),                    "wystawionych klientom B2B"), unsafe_allow_html=True)
-k2.markdown(kpi_card("#107C10", "Zapłacą w pełni",    f"{n_low/total*100:.1f}%",  f"prognoza ≥ {threshold_pct}% wartości faktury"), unsafe_allow_html=True)
-k3.markdown(kpi_card("#C50F1F", "Ryzyko niedoboru",   f"{n_high/total*100:.1f}%", f"prognoza < {threshold_pct}% wartości faktury"), unsafe_allow_html=True)
+k2.markdown(kpi_card("#107C10", "Prognoza: pełna płatność",   f"{n_low/total*100:.1f}%",  f"klient zapłaci ≥ {threshold_pct}% faktury"), unsafe_allow_html=True)
+k3.markdown(kpi_card("#C50F1F", "Ryzyko niedopłaty",         f"{n_high/total*100:.1f}%", f"klient zapłaci < {threshold_pct}% faktury"), unsafe_allow_html=True)
 k4.markdown(kpi_card("#E8792A", "Szacowany niedobór",     f"{value_at_risk/1000:.0f}k",  "PLN może nie wpłynąć"), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
@@ -467,7 +485,7 @@ st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
 
 df_hr = df_out[df_out["prediction_label"] == 0].copy()
 
-if has_dates:
+if has_order_date:
     df_hr["Data zamowienia"]   = pd.to_datetime(df_hr["Data zamowienia"], errors="coerce")
     df_hr["termin_platnosci"]  = df_hr["Data zamowienia"] + pd.Timedelta(days=30)
     df_hr["dni_do_terminu"]    = (df_hr["termin_platnosci"] - TODAY).dt.days
@@ -479,7 +497,7 @@ client_counts = df_hr.groupby("Nazwa klienta").size().to_dict() if "Nazwa klient
 
 # Powody kontaktu
 df_hr["reason"] = df_hr.apply(
-    lambda r: get_contact_reason(r, client_counts, branza_stats, has_branza), axis=1
+    lambda r: get_contact_reason(r, client_counts, industry_stats, has_industry), axis=1
 )
 
 # Priority score
@@ -490,9 +508,9 @@ def _urgency(days):
     if days <= 30: return 40
     return 20
 
-vmin, vmax = df_hr["prediction_score"].min(), df_hr["prediction_score"].max()
+vmin, vmax = df_hr["kwota_niedoboru"].min(), df_hr["kwota_niedoboru"].max()
 df_hr["urgency_score"] = df_hr["dni_do_terminu"].apply(_urgency)
-df_hr["value_score"]   = (df_hr["prediction_score"] - vmin) / max(vmax - vmin, 1) * 100
+df_hr["value_score"]   = (df_hr["kwota_niedoboru"] - vmin) / max(vmax - vmin, 1) * 100
 df_hr["repeat_score"]  = df_hr["Nazwa klienta"].map(client_counts).fillna(1).clip(upper=10) * 10 if "Nazwa klienta" in df_hr.columns else 10
 df_hr["priority_score"] = (
     0.40 * df_hr["urgency_score"] +
@@ -501,16 +519,21 @@ df_hr["priority_score"] = (
 )
 df_hr = df_hr.sort_values("priority_score", ascending=False).reset_index(drop=True)
 
-# Buckety cash flow — przeterminowane rozbite na 3 przedziały
-overdue_fresh  = df_hr[df_hr["dni_do_terminu"].between(-30, -1)]   # 1–30 dni po terminie
-overdue_medium = df_hr[df_hr["dni_do_terminu"].between(-90, -31)]  # 31–90 dni po terminie
-overdue_old    = df_hr[df_hr["dni_do_terminu"] < -90]              # >90 dni — stare długi
-this_week      = df_hr[df_hr["dni_do_terminu"].between(0, 7)]
-next_2weeks    = df_hr[df_hr["dni_do_terminu"].between(8, 14)]
-this_month     = df_hr[df_hr["dni_do_terminu"].between(15, 30)]
+# Active portfolio: exclude 2023-2025 training history from operational cash flow view
+_order_date_hr = pd.to_datetime(df_hr["Data zamowienia"], errors="coerce")
+_active = _order_date_hr >= pd.Timestamp("2026-01-01")
 
-# Tab Działania: pomijamy zamówienia przeterminowane >90 dni
-df_hr_active = df_hr[df_hr["dni_do_terminu"] >= -90].reset_index(drop=True)
+# Buckety cash flow — przeterminowane rozbite na 3 przedziały
+overdue_fresh  = df_hr[df_hr["dni_do_terminu"].between(-30, -1) & _active]
+overdue_medium = df_hr[df_hr["dni_do_terminu"].between(-90, -31) & _active]
+overdue_old    = df_hr[(df_hr["dni_do_terminu"] < -90) & _active]
+this_week      = df_hr[df_hr["dni_do_terminu"].between(0, 7) & _active]
+next_2weeks    = df_hr[df_hr["dni_do_terminu"].between(8, 14) & _active]
+this_month     = df_hr[df_hr["dni_do_terminu"].between(15, 30) & _active]
+
+# Tab Działania: tylko faktury do 30 dni po terminie — "jeden telefon" zadziała
+# Factury przeterminowane 31–90 dni są w zakładce Cash flow (overdue_medium)
+df_hr_active = df_hr[df_hr["dni_do_terminu"] >= -30].reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────── TABY ──────
 
@@ -524,97 +547,128 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ═══════════════════════════════════════════════════════ TAB 1 ══════
 with tab1:
 
-    # Nagłówek + podsumowanie akcji
-    n_active    = len(df_hr_active)
-    top5_val    = df_hr_active.head(5)["kwota_niedoboru"].sum()
-    n_this_week = len(df_hr_active[df_hr_active["dni_do_terminu"].between(0, 7)])
+    df_upcoming  = df_hr_active[df_hr_active["dni_do_terminu"] >= 0].reset_index(drop=True)
+    df_overdue30 = df_hr_active[df_hr_active["dni_do_terminu"] < 0].reset_index(drop=True)
+    n_upcoming   = len(df_upcoming)
+    n_overdue30  = len(df_overdue30)
+    top5_val     = df_hr_active.head(5)["kwota_niedoboru"].sum()
 
     st.markdown(f"""
 <div style='background:#FFFFFF; border:1px solid #E8ECF0; border-radius:8px;
-            padding:18px 24px; margin-bottom:20px;
-            border-left:4px solid #C50F1F;
+            padding:18px 24px; margin-bottom:20px; border-left:4px solid #0065BD;
             box-shadow:0 1px 4px rgba(0,0,0,0.06);'>
-  <div style='font-size:1rem; font-weight:700; color:#1B2A4A; margin-bottom:10px;'>
-    Klienci z niezapłaconymi lub ryzykownymi fakturami — skontaktuj się zanim minie termin płatności
+  <div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;'>
+    <div style='font-size:1rem; font-weight:700; color:#1B2A4A;'>
+      Faktury z ryzykiem niedopłaty — działaj zanim minie termin płatności
+    </div>
+    <div style='color:#8896A8; font-size:0.72rem; text-align:right; line-height:1.6; flex-shrink:0; margin-left:16px;'>
+      Kolejność: pilność terminu (40%) · kwota niedoboru (40%) · historia klienta (20%)
+    </div>
   </div>
   <div style='display:flex; gap:28px; flex-wrap:wrap;'>
     <div>
-      <span style='font-size:1.5rem; font-weight:800; color:#C50F1F;'>{n_active}</span>
-      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>faktur do obsługi</span>
+      <span style='font-size:1.5rem; font-weight:800; color:#0065BD;'>{n_upcoming}</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>faktur przed terminem</span>
     </div>
     <div>
-      <span style='font-size:1.5rem; font-weight:800; color:#E8792A;'>{n_this_week}</span>
-      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>terminów w tym tygodniu</span>
+      <span style='font-size:1.5rem; font-weight:800; color:#C50F1F;'>{n_overdue30}</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>świeżo przeterminowanych</span>
     </div>
     <div>
-      <span style='font-size:1.5rem; font-weight:800; color:#0065BD;'>{top5_val:,.0f} PLN</span>
-      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>PLN szacowany niedobór top 5</span>
+      <span style='font-size:1.5rem; font-weight:800; color:#E8792A;'>{top5_val:,.0f} PLN</span>
+      <span style='color:#8896A8; font-size:0.8rem; margin-left:5px;'>szacowany niedobór top 5</span>
     </div>
   </div>
 </div>""", unsafe_allow_html=True)
 
-    section_header("Lista klientów do kontaktu — posortowana od najpilniejszego")
+    def _render_tiers(df_section, start_rank):
+        tiers = [
+            ("🔴", "Krytyczne", "#C50F1F", "#FFF0F0",
+             df_section[df_section["priority_score"] >= 70]),
+            ("🟠", "Pilne",     "#E8792A", "#FFF5EE",
+             df_section[(df_section["priority_score"] >= 45) & (df_section["priority_score"] < 70)]),
+            ("🟡", "Ważne",     "#D4A017", "#FFFDE8",
+             df_section[df_section["priority_score"] < 45]),
+        ]
+        rank = start_rank
+        for icon, label, color, bg, subset in tiers:
+            if subset.empty:
+                continue
+            st.markdown(
+                f"<div style='display:flex; align-items:center; gap:10px; margin:14px 0 8px;'>"
+                f"<span style='font-size:1rem;'>{icon}</span>"
+                f"<span style='font-weight:700; color:{color}; font-size:0.9rem; "
+                f"text-transform:uppercase; letter-spacing:0.06em;'>{label}</span>"
+                f"<span style='color:#8896A8; font-size:0.8rem;'>· {len(subset)} faktur"
+                f" · {subset['kwota_niedoboru'].sum():,.0f} PLN szacowany niedobór</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            show_n = min(5, len(subset))
+            for _, row in subset.head(show_n).iterrows():
+                rank += 1
+                st.markdown(action_card(
+                    rank=rank, icon=icon, label=label, color=color, bg=bg,
+                    client=row.get("Nazwa klienta", "—"),
+                    industry=row.get("Branża", "—"),
+                    salesperson=row.get("Sprzedawca", "—"),
+                    value=row["kwota_niedoboru"],
+                    days=int(row["dni_do_terminu"]),
+                    reason=row["reason"],
+                    pct=row["pct_pokrycia"],
+                ), unsafe_allow_html=True)
+            remaining = len(subset) - show_n
+            if remaining > 0:
+                with st.expander(f"Pokaż kolejne {remaining} z kategorii '{label}'"):
+                    for _, row in subset.iloc[show_n:].iterrows():
+                        rank += 1
+                        st.markdown(action_card(
+                            rank=rank, icon=icon, label=label, color=color, bg=bg,
+                            client=row.get("Nazwa klienta", "—"),
+                            industry=row.get("Branża", "—"),
+                            salesperson=row.get("Sprzedawca", "—"),
+                            value=row["kwota_niedoboru"],
+                            days=int(row["dni_do_terminu"]),
+                            reason=row["reason"],
+                            pct=row["pct_pokrycia"],
+                        ), unsafe_allow_html=True)
+        return rank
 
-    # Grupuj po tierach — tylko aktywne zamówienia (≤90 dni przeterminowania)
-    tiers = [
-        ("🔴", "Krytyczne",  "#C50F1F", "#FFF0F0", df_hr_active[df_hr_active["priority_score"] >= 70]),
-        ("🟠", "Pilne",      "#E8792A", "#FFF5EE", df_hr_active[(df_hr_active["priority_score"] >= 45) & (df_hr_active["priority_score"] < 70)]),
-        ("🟡", "Ważne",      "#D4A017", "#FFFDE8", df_hr_active[df_hr_active["priority_score"] < 45]),
-    ]
+    # ── Sekcja 1: Zadzwoń przed terminem (główna wartość systemu) ──────────────
+    st.markdown("""
+<div style='display:flex; align-items:center; gap:12px; margin:8px 0 6px;
+            padding:12px 16px; background:#EBF3FF; border-radius:6px;
+            border-left:3px solid #0065BD;'>
+  <span style='font-size:1.2rem;'>📞</span>
+  <div>
+    <div style='font-weight:700; color:#0065BD; font-size:0.92rem;'>
+      Zadzwoń przed terminem</div>
+    <div style='color:#6B7A99; font-size:0.76rem; margin-top:1px;'>
+      Działaj zanim minie termin — jeden telefon zamiast windykacji tygodnie później</div>
+  </div>
+</div>""", unsafe_allow_html=True)
 
-    global_rank = 0
-    for icon, label, color, bg, subset in tiers:
-        if subset.empty:
-            continue
-        st.markdown(
-            f"<div style='display:flex; align-items:center; gap:10px; "
-            f"margin:18px 0 10px;'>"
-            f"<span style='font-size:1rem;'>{icon}</span>"
-            f"<span style='font-weight:700; color:{color}; font-size:0.9rem; "
-            f"text-transform:uppercase; letter-spacing:0.06em;'>{label}</span>"
-            f"<span style='color:#8896A8; font-size:0.8rem;'>· {len(subset)} zamówień"
-            f" · {subset['kwota_niedoboru'].sum():,.0f} PLN szacowany niedobór</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    if df_upcoming.empty:
+        st.info("Brak faktur wysokiego ryzyka z nadchodzącym terminem.")
+        global_rank = 0
+    else:
+        global_rank = _render_tiers(df_upcoming, 0)
 
-        show_n   = min(5, len(subset))
-        for _, row in subset.head(show_n).iterrows():
-            global_rank += 1
-            st.markdown(action_card(
-                rank       = global_rank,
-                icon       = icon,
-                label      = label,
-                color      = color,
-                bg         = bg,
-                client     = row.get("Nazwa klienta", "—"),
-                industry   = row.get("Branża", "—"),
-                salesperson= row.get("Sprzedawca", "—"),
-                value      = row["kwota_niedoboru"],
-                days       = int(row["dni_do_terminu"]),
-                reason     = row["reason"],
-                pct        = row["pct_pokrycia"],
-            ), unsafe_allow_html=True)
-
-        remaining = len(subset) - show_n
-        if remaining > 0:
-            with st.expander(f"Pokaż kolejne {remaining} z kategorii '{label}'"):
-                for _, row in subset.iloc[show_n:].iterrows():
-                    global_rank += 1
-                    st.markdown(action_card(
-                        rank       = global_rank,
-                        icon       = icon,
-                        label      = label,
-                        color      = color,
-                        bg         = bg,
-                        client     = row.get("Nazwa klienta", "—"),
-                        industry   = row.get("Branża", "—"),
-                        salesperson= row.get("Sprzedawca", "—"),
-                        value      = row["kwota_niedoboru"],
-                        days       = int(row["dni_do_terminu"]),
-                        reason     = row["reason"],
-                        pct        = row["pct_pokrycia"],
-                    ), unsafe_allow_html=True)
+    # ── Sekcja 2: Świeżo przeterminowane (≤30 dni) ─────────────────────────────
+    if not df_overdue30.empty:
+        st.markdown("""
+<div style='display:flex; align-items:center; gap:12px; margin:28px 0 6px;
+            padding:12px 16px; background:#FFF0F0; border-radius:6px;
+            border-left:3px solid #C50F1F;'>
+  <span style='font-size:1.2rem;'>⚠️</span>
+  <div>
+    <div style='font-weight:700; color:#C50F1F; font-size:0.92rem;'>
+      Świeżo przeterminowane — do 30 dni po terminie</div>
+    <div style='color:#6B7A99; font-size:0.76rem; margin-top:1px;'>
+      Termin już minął — ustal datę płatności zanim trafi do windykacji</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+        global_rank = _render_tiers(df_overdue30, global_rank)
 
 # ═══════════════════════════════════════════════════════ TAB 2 ══════
 with tab2:
@@ -635,18 +689,18 @@ with tab2:
   <div style='color:#6B7A99; font-size:0.8rem; line-height:1.5;'>{detail}</div>
 </div>""", unsafe_allow_html=True)
 
-    if has_branza:
-        wr = branza_stats.loc[worst_branza]
-        br = branza_stats.loc[best_branza]
-        _insight(i1, "#C50F1F", "▲ Branża najwyższego ryzyka", worst_branza,
+    if has_industry:
+        wr = industry_stats.loc[worst_industry]
+        br = industry_stats.loc[best_industry]
+        _insight(i1, "#C50F1F", "▲ Branża najwyższego ryzyka", worst_industry,
                  f"{wr['risk_pct']:.0f}% zamówień poniżej progu "
                  f"({int(wr['high_risk'])} z {int(wr['total'])})")
-        _insight(i2, "#107C10", "▼ Branża najniższego ryzyka", best_branza,
+        _insight(i2, "#107C10", "▼ Branża najniższego ryzyka", best_industry,
                  f"{br['risk_pct']:.0f}% zamówień poniżej progu "
                  f"({int(br['high_risk'])} z {int(br['total'])})")
-    if has_sprzedawca:
-        sr = sp_stats.loc[worst_sprzedawca]
-        _insight(i3, "#E8792A", "● Sprzedawca z największym ryzykiem", worst_sprzedawca,
+    if has_salesperson:
+        sr = salesperson_stats.loc[worst_salesperson]
+        _insight(i3, "#E8792A", "● Sprzedawca z największym ryzykiem", worst_salesperson,
                  f"{sr['risk_pct']:.0f}% zamówień wysokiego ryzyka "
                  f"({int(sr['high_risk'])} z {int(sr['total'])})")
 
@@ -682,8 +736,8 @@ with tab2:
 
     with col_l:
         section_header("Ryzyko wg branży")
-        if has_branza:
-            sorted_b = branza_stats["risk_pct"].sort_values()
+        if has_industry:
+            sorted_b = industry_stats["risk_pct"].sort_values()
             bar_col  = [
                 "#C50F1F" if v > 50 else "#E8792A" if v > 30 else "#0065BD"
                 for v in sorted_b.values
@@ -712,8 +766,8 @@ with tab2:
 
     with col_r:
         section_header("Portfel sprzedawców")
-        if has_sprzedawca:
-            sp_sorted = sp_stats.sort_values("risk_pct", ascending=True)
+        if has_salesperson:
+            sp_sorted = salesperson_stats.sort_values("risk_pct", ascending=True)
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 y=sp_sorted.index.tolist(), x=sp_sorted["low_risk"].tolist(),
@@ -787,7 +841,7 @@ with tab3:
     st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
     section_header("Trend % ryzyka w czasie")
 
-    if has_dates:
+    if has_order_date:
         df_trend = df_out.copy()
         df_trend["Data zamowienia"] = pd.to_datetime(df_trend["Data zamowienia"], errors="coerce")
         df_trend["miesiac"] = df_trend["Data zamowienia"].dt.to_period("M")
