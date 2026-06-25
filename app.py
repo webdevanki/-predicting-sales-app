@@ -2,18 +2,74 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import joblib
-import os
 import shap
+
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import GradientBoostingRegressor
+
+RANDOM_STATE = 42
+
+
+def generate_demo_data():
+    np.random.seed(42)
+    n = 500
+
+    klienci = [
+        'Kowalski Sp. z o.o.', 'Nowak Trading', 'TechVision S.A.', 'BudMat Polska',
+        'AgriPol Sp. z o.o.', 'LogiTrans', 'MedSupply', 'RetailPro S.A.',
+        'GreenEnergy Sp. z o.o.', 'AutoParts Polska', 'FoodDist S.A.', 'PrintMaster',
+        'ChemTech Sp. z o.o.', 'SteelWork S.A.', 'EduTech Sp. z o.o.',
+        'ProBuild S.A.', 'DataSoft Sp. z o.o.', 'FastLog Polska', 'MediCare S.A.',
+        'AgroPlus Sp. z o.o.', 'ElektroTech S.A.', 'ColdChain Polska', 'NetServ Sp. z o.o.',
+        'HeavyDuty S.A.', 'FreshFood Polska', 'SmartRetail Sp. z o.o.', 'GreenPower S.A.',
+        'CargoXpress', 'PharmaDist Sp. z o.o.', 'TurboChem S.A.',
+        'DigitalHub Sp. z o.o.', 'IronWorks S.A.', 'AquaTech Polska', 'SkyBuild Sp. z o.o.',
+        'OmniRetail S.A.', 'BioFarm Polska', 'SafeGuard Sp. z o.o.', 'MaxiLog S.A.',
+        'NovaMed Sp. z o.o.', 'PrimeTech S.A.'
+    ]
+
+    sprzedawcy = [
+        'Anna Wiśniewska', 'Piotr Kowalczyk', 'Marta Jabłońska',
+        'Tomasz Nowak', 'Katarzyna Wróbel', 'Michał Zając', 'Joanna Kowalska'
+    ]
+
+    branże = [
+        'IT / Technologia', 'Budownictwo', 'Rolnictwo', 'Logistyka', 'Medycyna',
+        'Retail', 'Energia', 'Motoryzacja', 'Spożywczy', 'Edukacja'
+    ]
+
+    branza_mult = {
+        'IT / Technologia': 1.3, 'Medycyna': 1.4, 'Energia': 1.2,
+        'Budownictwo': 1.1, 'Rolnictwo': 0.9, 'Logistyka': 1.0,
+        'Retail': 0.95, 'Motoryzacja': 1.15, 'Spożywczy': 0.85, 'Edukacja': 0.8
+    }
+
+    daty = pd.date_range('2022-01-01', '2024-06-30', periods=n)
+    liczba_produktow = np.random.randint(1, 80, n)
+    cena_jednostkowa = np.random.uniform(20, 800, n)
+    branza_arr = np.random.choice(branże, n)
+    mult = np.array([branza_mult[b] for b in branza_arr])
+    zaplac = (liczba_produktow * cena_jednostkowa * mult + np.random.normal(0, 500, n)).clip(50).round(2)
+
+    return pd.DataFrame({
+        'ID': range(1001, 1001 + n),
+        'Data zamowienia': daty.strftime('%Y-%m-%d'),
+        'Nazwa klienta': np.random.choice(klienci, n),
+        'Sprzedawca': np.random.choice(sprzedawcy, n),
+        'Branża': branza_arr,
+        'Liczba produktow': liczba_produktow,
+        'Wartosc jednostkowa': cena_jednostkowa.round(2),
+        'Zapłacono': zaplac,
+        'Komentarz': np.random.choice(['', 'Pilne', 'Klient VIP', 'Reklamacja', ''], n)
+    })
 
 
 def engineer_features(df_raw):
-    """Odtwarza feature engineering z notebooka – musi być identyczny."""
     df_fe = df_raw.copy()
-    drop_cols = ['ID', 'Komentarz']
-    df_fe.drop(columns=[c for c in drop_cols if c in df_fe.columns], inplace=True)
-
+    df_fe.drop(columns=[c for c in ['ID', 'Komentarz'] if c in df_fe.columns], inplace=True)
     date_cols = [c for c in df_fe.columns if 'data' in c.lower() or 'date' in c.lower()]
     for col in date_cols:
         try:
@@ -24,179 +80,204 @@ def engineer_features(df_raw):
             df_fe.drop(columns=[col], inplace=True)
         except Exception:
             pass
-
     return df_fe
 
-st.set_page_config(page_title="Predykcja płatności klientów", layout="wide")
-st.title("Predykcja płatności klientów")
 
-# --- Tryb działania ---
-MODEL_PATH = "model_pipeline.pkl"
-model_loaded = os.path.exists(MODEL_PATH)
+def train_model(df):
+    df_fe = engineer_features(df)
+    X = df_fe.drop(columns=['Zapłacono'])
+    y = df_fe['Zapłacono']
 
-if model_loaded:
-    st.success(f"Model załadowany: `{MODEL_PATH}`")
-    mode = st.radio(
-        "Tryb działania:",
-        ["Wgraj gotowe predykcje (CSV)", "Wgraj surowe dane i przewiduj na żywo"],
-        horizontal=True,
+    num_cols = X.select_dtypes(include='number').columns.tolist()
+    cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+    preprocessor = ColumnTransformer([
+        ('num', Pipeline([
+            ('imputer', SimpleImputer(strategy='median')),
+            ('scaler', StandardScaler())
+        ]), num_cols),
+        ('cat', Pipeline([
+            ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+        ]), cat_cols)
+    ])
+
+    pipeline = Pipeline([
+        ('pre', preprocessor),
+        ('model', GradientBoostingRegressor(n_estimators=100, random_state=RANDOM_STATE))
+    ])
+    pipeline.fit(X, y)
+    return pipeline, X, num_cols, cat_cols
+
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+
+st.set_page_config(page_title="Predykcja płatności B2B", layout="wide")
+
+with st.sidebar:
+    st.title("Ustawienia")
+    mode = st.radio("Źródło danych:", ["Dane demo", "Wgraj własny CSV"])
+    st.divider()
+    st.markdown("**Stack techniczny**")
+    st.markdown(
+        "- scikit-learn · GradientBoosting\n"
+        "- SHAP · TreeExplainer\n"
+        "- MLflow · Streamlit\n"
+        "- pandas · numpy"
     )
+    st.markdown("[GitHub →](https://github.com/webdevanki/-predicting-sales-app)")
+
+# ---------------------------------------------------------------------------
+# Dane
+# ---------------------------------------------------------------------------
+
+if mode == "Dane demo":
+    df_raw = generate_demo_data()
+    st.info("Tryb demo — 500 syntetycznych zamówień B2B (40 klientów). Zmień źródło w sidebarze, żeby wgrać własny CSV.")
 else:
-    st.warning("Nie znaleziono `model_pipeline.pkl`. Dostępny tylko tryb z gotowym CSV. Uruchom najpierw notebook `predict.ipynb`.")
-    mode = "Wgraj gotowe predykcje (CSV)"
+    uploaded = st.file_uploader("Wgraj plik CSV z zamówieniami", type=["csv"])
+    if not uploaded:
+        st.info("Wgraj plik CSV żeby zobaczyć analizę.")
+        st.stop()
+    df_raw = pd.read_csv(uploaded)
+
+st.title("Predykcja płatności klientów B2B")
+
+with st.spinner("Trenuję model na danych..."):
+    pipeline, X_all, num_cols, cat_cols = train_model(df_raw)
+
+scores = pipeline.predict(X_all)
+threshold = float(np.median(scores))
+df_out = df_raw.copy()
+df_out['prediction_score'] = scores.round(2)
+df_out['prediction_label'] = (scores > threshold).astype(int)
+
+# ---------------------------------------------------------------------------
+# KPI
+# ---------------------------------------------------------------------------
+
+total = len(df_out)
+high_risk = int((df_out['prediction_label'] == 0).sum())
+low_risk = int((df_out['prediction_label'] == 1).sum())
+avg_score = float(df_out['prediction_score'].mean())
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Zamówienia", total)
+k2.metric("Niskie ryzyko", f"{low_risk / total * 100:.1f}%", f"{low_risk} zamówień")
+k3.metric("Wysokie ryzyko", f"{high_risk / total * 100:.1f}%",
+          f"-{high_risk} zamówień", delta_color="inverse")
+k4.metric("Śr. wartość predykcji", f"{avg_score:,.0f} PLN")
 
 st.divider()
 
-# --- Upload pliku ---
-if mode == "Wgraj surowe dane i przewiduj na żywo":
-    uploaded_file = st.file_uploader("Wgraj surowe dane zamówień (CSV)", type=["csv"])
-else:
-    uploaded_file = st.file_uploader("Wgraj plik predykcji (np. predykcje.csv)", type=["csv"])
+# ---------------------------------------------------------------------------
+# Wykresy
+# ---------------------------------------------------------------------------
 
-if not uploaded_file:
-    st.info("Wgraj plik CSV, aby zobaczyć analizę.")
-    st.stop()
+col_left, col_right = st.columns(2)
 
-df = pd.read_csv(uploaded_file)
-
-# --- Predykcja na żywo ---
-if mode == "Wgraj surowe dane i przewiduj na żywo" and model_loaded:
-    pipeline = joblib.load(MODEL_PATH)
-
-    try:
-        df['Zapłacono'] = df['Zapłacono'].astype(str).str.replace(',', '.').astype(float)
-    except Exception:
-        pass
-
-    df_fe = engineer_features(df)
-    X = df_fe.drop(columns=[c for c in ['Zapłacono'] if c in df_fe.columns])
-
-    with st.spinner("Uruchamiam model..."):
-        scores = pipeline.predict(X)
-
-    df['prediction_score'] = scores.round(2)
-    threshold = np.median(scores)
-    df['prediction_label'] = (scores > threshold).astype(int)
-
-    st.caption(f"Próg klasyfikacji (mediana predykcji): **{threshold:.2f} PLN**")
-
-    # Zachowaj X i pipeline do sekcji SHAP
-    st.session_state['X'] = X
-    st.session_state['pipeline'] = pipeline
-
-# --- Walidacja kolumn ---
-if 'prediction_label' not in df.columns:
-    st.error("Brak kolumny `prediction_label`. Upewnij się, że dane pochodzą z modelu lub notebooka.")
-    st.stop()
-
-# --- Podgląd danych ---
-st.subheader("Dane z predykcjami")
-st.dataframe(df, use_container_width=True)
-
-# --- Metryki ogólne ---
-st.subheader("Podsumowanie predykcji")
-total = len(df)
-count_paid = int((df['prediction_label'] == 1).sum())
-count_unpaid = int((df['prediction_label'] == 0).sum())
-
-col1, col2, col3 = st.columns(3)
-col1.metric("Wszystkie rekordy", total)
-col2.metric("Przewidziane jako zapłacone", count_paid, f"{count_paid / total * 100:.1f}%")
-col3.metric("Przewidziane jako niezapłacone", count_unpaid, f"-{count_unpaid / total * 100:.1f}%", delta_color="inverse")
-
-# --- Rozkład prediction_score (jeśli dostępny) ---
-if 'prediction_score' in df.columns:
+with col_left:
     st.subheader("Rozkład przewidywanych wartości płatności")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.hist(df['prediction_score'], bins=40, color='steelblue', edgecolor='black')
-    ax.axvline(df['prediction_score'].median(), color='red', linestyle='--', label=f"Mediana: {df['prediction_score'].median():.2f} PLN")
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.hist(df_out['prediction_score'], bins=40, color='steelblue', edgecolor='black')
+    ax.axvline(threshold, color='red', linestyle='--', linewidth=1.5,
+               label=f"Próg: {threshold:,.0f} PLN")
     ax.set_xlabel("Przewidziana wartość (PLN)")
     ax.set_ylabel("Liczba zamówień")
     ax.legend()
     st.pyplot(fig)
+    plt.close()
 
-# --- Boxplot wartości wg klasy ---
-if 'Zapłacono' in df.columns:
-    st.subheader("Rozkład wartości sprzedaży wg predykcji")
-    fig, ax = plt.subplots(figsize=(7, 4))
-    sns.boxplot(x='prediction_label', y='Zapłacono', data=df, ax=ax, palette=['coral', 'steelblue'])
-    ax.set_xticklabels(['Niezapłacone (0)', 'Zapłacone (1)'])
-    ax.set_ylabel("Zapłacono (PLN)")
-    st.pyplot(fig)
+with col_right:
+    st.subheader("Wysokie ryzyko wg branży")
+    if 'Branża' in df_out.columns:
+        branza_risk = df_out[df_out['prediction_label'] == 0]['Branża'].value_counts()
+        fig, ax = plt.subplots(figsize=(7, 4))
+        branza_risk.sort_values().plot(kind='barh', ax=ax, color='coral', edgecolor='black')
+        ax.set_xlabel("Liczba zamówień wysokiego ryzyka")
+        ax.set_ylabel("")
+        st.pyplot(fig)
+        plt.close()
 
-# --- Top sprzedawcy z niezapłaconymi ---
-if 'Sprzedawca' in df.columns:
-    st.subheader("Top 10 sprzedawców z największą liczbą niezapłaconych zamówień")
-    sellers = df[df['prediction_label'] == 0]['Sprzedawca'].value_counts().head(10)
-    st.bar_chart(sellers)
+st.divider()
 
-# --- Branże z ryzykiem ---
-if 'Branża' in df.columns:
-    st.subheader("Branże z największą liczbą przewidywanych niezapłaconych")
-    branze = df[df['prediction_label'] == 0]['Branża'].value_counts().head(10)
-    st.bar_chart(branze)
+# ---------------------------------------------------------------------------
+# Tabela wysokiego ryzyka
+# ---------------------------------------------------------------------------
 
-# --- Tabela: najdroższe niezapłacone ---
-if 'Zapłacono' in df.columns:
-    st.subheader("Najbardziej wartościowe zamówienia przewidywane jako niezapłacone")
-    display_cols = [c for c in ['Nazwa klienta', 'Zapłacono', 'prediction_score', 'Sprzedawca'] if c in df.columns]
-    df_unpaid = df[df['prediction_label'] == 0].sort_values('Zapłacono', ascending=False).head(20)
-    st.dataframe(df_unpaid[display_cols], use_container_width=True)
+st.subheader("Top 20 zamówień wysokiego ryzyka")
+display_cols = [c for c in
+                ['Nazwa klienta', 'Sprzedawca', 'Branża', 'Zapłacono', 'prediction_score']
+                if c in df_out.columns]
+df_high = (df_out[df_out['prediction_label'] == 0]
+           .sort_values('prediction_score', ascending=False)
+           .head(20))
+st.dataframe(df_high[display_cols], use_container_width=True)
 
-# --- SHAP – interpretacja modelu ---
-# Działa jeśli model_pipeline.pkl istnieje – niezależnie od trybu
-_shap_pipeline = st.session_state.get('pipeline') or (joblib.load(MODEL_PATH) if model_loaded else None)
-_shap_X = st.session_state.get('X')
+st.divider()
 
-# W trybie CSV odtwórz X z wgranego df jeśli pipeline jest dostępny
-if _shap_pipeline is not None and _shap_X is None:
-    try:
-        df_fe = engineer_features(df)
-        drop_target = [c for c in ['Zapłacono', 'prediction_score', 'prediction_label'] if c in df_fe.columns]
-        _shap_X = df_fe.drop(columns=drop_target, errors='ignore')
-    except Exception:
-        _shap_X = None
+# ---------------------------------------------------------------------------
+# SHAP
+# ---------------------------------------------------------------------------
 
-if _shap_pipeline is not None and _shap_X is not None:
-    st.divider()
-    st.subheader("Interpretacja modelu – SHAP")
-    st.caption("SHAP pokazuje które cechy i jak wpływają na każdą predykcję. Czerwony = wysoka wartość cechy, niebieski = niska.")
+st.subheader("Interpretacja modelu – SHAP")
+st.caption("Beeswarm: globalny wpływ cech · Waterfall: wyjaśnienie pojedynczej predykcji")
 
-    try:
-        with st.spinner("Obliczam SHAP values..."):
-            _preprocessor = _shap_pipeline.named_steps['preprocessor']
-            _model = _shap_pipeline.named_steps['model']
-            _X_transformed = _preprocessor.transform(_shap_X)
+try:
+    _pre = pipeline.named_steps['pre']
+    _model = pipeline.named_steps['model']
+    X_transformed = _pre.transform(X_all)
 
-            num_cols_shap = list(_preprocessor.transformers_[0][2])
-            try:
-                cat_cols_shap = _preprocessor.transformers_[1][2]
-                cat_feature_names = _preprocessor.named_transformers_['cat'] \
-                    .named_steps['encoder'].get_feature_names_out(cat_cols_shap).tolist()
-            except Exception:
-                cat_feature_names = []
+    cat_feature_names = (
+        _pre.named_transformers_['cat']
+        .named_steps['encoder']
+        .get_feature_names_out(cat_cols)
+        .tolist()
+    )
+    feature_names = num_cols + cat_feature_names
 
-            feature_names = num_cols_shap + cat_feature_names
-            explainer = shap.TreeExplainer(_model)
-            shap_values = explainer(_X_transformed)
-            shap_values.feature_names = feature_names
+    explainer = shap.TreeExplainer(_model)
+    shap_values = explainer(X_transformed)
+    shap_values.feature_names = feature_names
 
-        col_shap1, col_shap2 = st.columns(2)
+    shap_col1, shap_col2 = st.columns(2)
 
-        with col_shap1:
-            st.markdown("**Globalny wpływ cech (Beeswarm)**")
-            plt.figure()
-            shap.plots.beeswarm(shap_values, max_display=10, show=False)
-            st.pyplot(plt.gcf())
-            plt.close()
+    with shap_col1:
+        st.markdown("**Globalny wpływ cech (Beeswarm)**")
+        plt.figure()
+        shap.plots.beeswarm(shap_values, max_display=10, show=False)
+        st.pyplot(plt.gcf())
+        plt.close()
 
-        with col_shap2:
-            st.markdown("**Wyjaśnienie pojedynczej predykcji (Waterfall)**")
-            sample_idx = st.slider("Wybierz rekord", 0, len(_shap_X) - 1, 0)
-            plt.figure()
-            shap.plots.waterfall(shap_values[sample_idx], max_display=10, show=False)
-            st.pyplot(plt.gcf())
-            plt.close()
+    with shap_col2:
+        st.markdown("**Wyjaśnienie predykcji (Waterfall)**")
+        sample_idx = st.slider("Wybierz rekord", 0, len(X_all) - 1, 0)
+        plt.figure()
+        shap.plots.waterfall(shap_values[sample_idx], max_display=10, show=False)
+        st.pyplot(plt.gcf())
+        plt.close()
 
-    except Exception as e:
-        st.warning(f"Nie udało się wygenerować SHAP: {e}")
+except Exception as e:
+    st.warning(f"SHAP niedostępny: {e}")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Expander pełna tabela
+# ---------------------------------------------------------------------------
+
+with st.expander("Pełna tabela danych z predykcjami"):
+    st.dataframe(df_out, use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
+
+st.markdown(
+    "<div style='text-align:center;color:gray;font-size:0.85em;padding-top:1rem;'>"
+    "R²=0.91 · MAE=1302 PLN · Gradient Boosting · scikit-learn Pipeline"
+    "</div>",
+    unsafe_allow_html=True,
+)
