@@ -312,8 +312,6 @@ with st.sidebar:
               letter-spacing:0.12em; margin-top:3px;'>Prediction Dashboard</div>
 </div>""", unsafe_allow_html=True)
 
-    st.markdown("**Źródło danych**")
-    mode = st.radio("", ["Dane demo", "Wgraj własny CSV"], label_visibility="collapsed")
     st.divider()
 
     st.markdown("**Próg pokrycia faktury**")
@@ -322,25 +320,14 @@ with st.sidebar:
         "faktura trafia na listę ryzyka."
     )
     threshold_pct = st.slider(
-        "", min_value=50, max_value=95, value=85, step=1,
+        "", min_value=50, max_value=99, value=85, step=1,
         format="%d%%", label_visibility="collapsed",
     )
     st.caption("Np. 85% → klient z fakturą 10 000 PLN musi zapłacić min. 8 500 PLN")
 
 # ─────────────────────────────────────────────────────── Wczytaj dane ──────
 
-if mode == "Dane demo":
-    df_raw = generate_demo_data()
-    st.info(
-        "Tryb demo — 500 syntetycznych zamówień B2B · 40 klientów · 7 sprzedawców · "
-        "daty: historyczne, bieżące i przyszłe."
-    )
-else:
-    uploaded = st.file_uploader("Wgraj plik CSV z zamówieniami", type=["csv"])
-    if not uploaded:
-        st.info("Wgraj plik CSV żeby zobaczyć analizę.")
-        st.stop()
-    df_raw = pd.read_csv(uploaded)
+df_raw = generate_demo_data()
 
 # ─────────────────────────────────────────────────────── Trenuj model ──────
 

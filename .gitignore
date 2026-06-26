@@ -1,6 +1,7 @@
 # Dane wejściowe i wyjściowe (nie wersjonujemy danych produkcyjnych)
 predykcje.csv
 predykcje2.csv
+zamowienia_testowe.csv
 
 # Artefakty modelu generowane przez notebook
 model_pipeline.pkl
@@ -12,6 +13,7 @@ feature_importance.png
 shap_beeswarm.png
 correlation.png
 ab_test.png
+mlflow.png
 
 # MLflow – katalog z historią runów i baza danych (może być duży)
 mlruns/
