@@ -697,6 +697,7 @@ with tab2:
     section_header("Rozkład wartości zamówień")
     fig = px.histogram(
         df_out, x="pct_pokrycia", nbins=40,
+        range_x=[0, 100],
         template="plotly_white",
         color_discrete_sequence=["#0065BD"],
         labels={"pct_pokrycia": "Prognozowane pokrycie faktury (%)", "count": "Liczba faktur"},
@@ -712,7 +713,7 @@ with tab2:
     )
     fig.update_layout(
         **_chart_base,
-        xaxis=dict(title="Prognozowane pokrycie faktury (%)", ticksuffix="%", **_ax),
+        xaxis=dict(title="Prognozowane pokrycie faktury (%)", ticksuffix="%", range=[0, 101], **_ax),
         yaxis=dict(title="Liczba faktur", **_ax),
         margin=dict(l=20, r=20, t=20, b=20),
     )
